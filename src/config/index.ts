@@ -1,0 +1,65 @@
+// پیکربندی مرکزی اپ — پیش از انتشار مقادیر را بررسی کن
+
+export const APP_VERSION = '1.0.0';
+export const APP_ID = 'ir.talam.app';
+
+/**
+ * حالت MOCK: تا وقتی endpoint واقعی نرخ‌ها آماده نیست true بماند
+ * و اپ از فایل محلی prices.mock.json استفاده می‌کند.
+ * برای انتشار واقعی: MOCK_MODE=false و PRICES_URL را به آدرس endpoint خودت تغییر بده
+ * (نمونه‌ی سرور در پوشه server/).
+ */
+export const MOCK_MODE = true;
+export const PRICES_URL = '/prices.mock.json';
+
+export const FETCH_TIMEOUT_MS = 5_000; // تایم‌اوت دریافت نرخ‌ها
+export const STALE_WARNING_MS = 6 * 60 * 60 * 1000; // بعد از ۶ ساعت نرخ «قدیمی» تلقی می‌شود
+
+export interface Settings {
+  theme: 'system' | 'dark' | 'light';
+  digits: 'fa' | 'en';
+  taxPct: number;
+  profitPct: number;
+  secondHandMarginPct: number;
+}
+
+export const DEFAULT_SETTINGS: Settings = {
+  theme: 'system',
+  digits: 'fa',
+  taxPct: 10,
+  profitPct: 7,
+  secondHandMarginPct: 5,
+};
+
+/** آستانه‌های حکم «چند درصد حساب کرده؟» (درصد اجرت ضمنی) */
+export const VERDICT_THRESHOLDS = { fairMax: 12, expensiveMax: 20 };
+
+/** آستانه‌های سطح حباب سکه (درصد) */
+export const BUBBLE_THRESHOLDS = { mediumMin: 5, highMin: 15 };
+
+/** گزینه‌های سریع اجرت ساخت */
+export const MAKING_QUICK_CHIPS = [7, 12, 14, 18];
+export const KARAT_OPTIONS = [18, 14, 21, 22, 24];
+
+/** مشخصات سکه‌ها — پیش از انتشار با استانداردهای رسمی چک شود */
+export const COIN_SPECS = {
+  emami: { key: 'emami', label: 'سکه امامی', weight: 8.133, purity: 0.9 },
+  bahar: { key: 'bahar', label: 'بهار آزادی', weight: 8.133, purity: 0.9 },
+  nim: { key: 'nim', label: 'نیم سکه', weight: 4.0665, purity: 0.9 },
+  rob: { key: 'rob', label: 'ربع سکه', weight: 2.03325, purity: 0.9 },
+  gerami: { key: 'gerami', label: 'سکه گرمی', weight: 1.0166, purity: 0.9 },
+} as const;
+
+/** حداکثر رقم اعشار وزن */
+export const MAX_WEIGHT_DECIMALS = 3;
+
+// ───────── تبلیغات (پیش‌فرض خاموش) ─────────
+export const ADS_ENABLED = false;
+export const AD_PROVIDER: 'tapsell' | 'yektanet' = 'tapsell';
+export const AD_BANNER_ID = 'TODO-banner-id'; // شناسه بنر واقعی اینجا قرار بگیرد
+
+// ───────── لینک‌های فروشگاه‌ها ─────────
+export const BAZAAR_APP_URL = `https://cafebazaar.ir/app/${APP_ID}`;
+export const BAZAAR_RATE_URL = `https://cafebazaar.ir/app/${APP_ID}?rate`;
+export const MYKET_APP_URL = `https://myket.ir/app/${APP_ID}`;
+export const SHARE_APP_TEXT = `محاسبه‌گر طلا «طلام» — ساده، سریع و آفلاین:\n${BAZAAR_APP_URL}`;
