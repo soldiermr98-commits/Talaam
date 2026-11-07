@@ -1,9 +1,13 @@
 <?php
 /**
- * هسته خط تولید نرخ — تست‌پذیر (providers از بیرون تزریق می‌شوند).
+ * هسته خط تولید نرخ — تست‌پذیر (providers از بیرون تزریق میشوند) + dry-run.
  *
- * جریان: lock → منابع به ترتیب (validate + sanity) → jump-guard نسبت به last_good →
- * انتشار اتمیک last_good.json و public/prices.json → همه شکست خوردند؟ stale با updated_at اصلی.
+ * جریان: lock → منابع به ترتیب اولویت (due/enable/skip+cache) → merge جزئی فیلدها
+ * → validate سطح merged → jump-guard (تأیید منبع دوم / N اجر متوالی) → انتشار اتمیک
+ * → همه شکست؟ stale با updated_at اصلی (هیچ داده جعلی).
+ *
+ * داده جزئی: هر منبع میتواند فقط بعضی فیلدها را بدهد؛ merge در ترتیب اولویت انجام میشود،
+ * منبعِ هر فیلد در state ثبت میشود و source خروجی مثل "a+b" میشود.
  */
 class PricePipeline
 {
@@ -29,8 +33,8 @@ class PricePipeline
     private $logKeep;
     /** @var string|null */
     private $rejectedLog;
-    /** @var string|null */
-    private $overridePath;
+    /** @var bool */
+    private $dryRun = false;
 
     public function __construct(array $config, array $providers)
     {
@@ -40,7 +44,6 @@ class PricePipeline
         $this->lastGoodPath = (string)($paths['last_good'] ?? '');
         $this->publishPath = (string)($paths['publish'] ?? '');
         $this->statePath = (string)($paths['state'] ?? '');
-        $this->overridePath = (string)($paths['override'] ?? '');
         $cron = $config['cron'] ?? [];
         $this->lockPath = isset($cron['lock_path']) && $cron['lock_path'] !== '' ? (string)$cron['lock_path'] : null;
         $this->logPath = isset($cron['log_path']) && $cron['log_path'] !== '' ? (string)$cron['log_path'] : null;
@@ -49,8 +52,18 @@ class PricePipeline
         $this->rejectedLog = isset($cron['rejected_log']) && $cron['rejected_log'] !== '' ? (string)$cron['rejected_log'] : null;
     }
 
+    public function setDryRun(bool $v): void
+    {
+        $this->dryRun = $v;
+    }
+
+    public function isDryRun(): bool
+    {
+        return $this->dryRun;
+    }
+
     /**
-     * یک سیکل کامل اجرا می‌کند.
+     * یک سیکل کامل اجرا میکند.
      * @return array{status:string, published:?array} — status: ok|stale|locked|error
      */
     public function run(): array
@@ -61,91 +74,232 @@ class PricePipeline
         }
         try {
             $lastGood = $this->readJson($this->lastGoodPath);
+            $state = $this->readJson($this->statePath) ?? [];
+            $ps = is_array($state['provider_state'] ?? null) ? $state['provider_state'] : [];
 
-            // ۱) زنجیره منابع
-            $validated = [];
+            $merged = ['gold18' => null, 'mazaneh' => null, 'coins' => ['emami' => null, 'bahar' => null, 'nim' => null, 'rob' => null, 'gerami' => null]];
+            $fieldSource = []; // field => provider id (داخلی)
+            $fieldTs = [];     // field => unix ts
+            $proposals = [];   // field => [[id, value], ...] برای تأیید متقاطع
+            $contributed = []; // ترتیب منابع مشارکت‌کننده
+
             foreach ($this->providers as $provider) {
-                try {
-                    $normalized = $provider->fetch();
-                    $errors = $this->validateNormalized($normalized);
-                    if (!empty($errors)) {
-                        $this->logRejected($provider->id(), $errors, $normalized);
-                        continue;
-                    }
-                    $validated[] = ['id' => $provider->id(), 'data' => $normalized];
-                } catch (Throwable $e) {
-                    $this->log('provider "' . $provider->id() . '" failed: ' . $e->getMessage());
+                $pid = $provider->id();
+                if (method_exists($provider, 'isEnabled') && !$provider->isEnabled()) {
+                    $this->log('provider "' . $pid . '" disabled — skipped');
+                    continue;
                 }
+                $due = method_exists($provider, 'isDue')
+                    ? $provider->isDue($ps[$pid] ?? [])
+                    : ['due' => true, 'reason' => 'ok'];
+
+                $data = null;
+                $dataTs = 0;
+                if ($due['due']) {
+                    try {
+                        $data = $provider->fetch();
+                        $errors = $this->validatePartial($data);
+                        if (!empty($errors)) {
+                            $this->logRejected($pid, $errors, $data);
+                            $data = null;
+                        } else {
+                            $dataTs = time();
+                            if (method_exists($provider, 'isDue')) {
+                                // شمارنده روزانه + زمان آخرین فراخوانی واقعی
+                                $today = date('Ymd');
+                                $ps[$pid]['daily'][$today] = (int)($ps[$pid]['daily'][$today] ?? 0) + 1;
+                                $ps[$pid]['last_call_ts'] = time();
+                            }
+                        }
+                    } catch (Throwable $e) {
+                        $this->log('provider "' . $pid . '" failed: ' . $e->getMessage());
+                        $data = null;
+                    }
+                } else {
+                    $this->log('provider "' . $pid . '" skipped: ' . $due['reason']);
+                }
+
+                // cache fallback — وقتی skip/fail شد و داده کش سالمی در بازه max_age دارد
+                if ($data === null) {
+                    $ld = $ps[$pid]['last_data'] ?? null;
+                    $ts = (int)($ps[$pid]['last_data_ts'] ?? 0);
+                    $maxAge = method_exists($provider, 'getMaxAgeSeconds') ? $provider->getMaxAgeSeconds() : null;
+                    if (is_array($ld) && $maxAge !== null && $ts > 0 && (time() - $ts) <= $maxAge) {
+                        $data = $ld;
+                        $dataTs = $ts;
+                        $this->log('provider "' . $pid . '" — using cached data (' . (time() - $ts) . 's old)');
+                    }
+                }
+                if ($data === null) {
+                    continue;
+                }
+                $this->mergeInto($merged, $data, $pid, $fieldSource, $fieldTs, $proposals, $contributed, $dataTs);
             }
 
-            if (empty($validated)) {
+            $this->writeProviderState($state, $ps);
+            // ثبت منبع هر فیلد (لاگ داخلی — در JSON عمومی فقط source تجمیعی میرود)
+            $this->writeState($state, ['field_source' => $fieldSource]);
+
+            if ($merged['gold18'] === null) {
+                return $this->serveStale($lastGood);
+            }
+            if ($merged['mazaneh'] === null) {
+                $merged['mazaneh'] = (int)round($merged['gold18'] * 4.3318);
+            }
+
+            // سطح merged: ترتیب سکه‌ها، plausibility سکه نسبت به گرم، نسبت مظنه
+            $mergedErrors = $this->validateNormalized($merged);
+            if (!empty($mergedErrors)) {
+                $this->logRejected('merged', $mergedErrors, $merged);
+                $this->log('merged data failed validation — serving stale');
                 return $this->serveStale($lastGood);
             }
 
-            // ۲) انتخاب اولین کاندیدِ پشت‌سرگذراننده jump-guard
-            foreach ($validated as $cand) {
-                if ($this->jumpGuardPasses((string)$cand['id'], $cand['data'], $lastGood, $validated)) {
-                    $payload = $this->buildPayload($cand['data'], $cand['id'], false);
-                    $this->writeAtomic($this->lastGoodPath, $payload);
-                    $this->writeAtomic($this->publishPath, $payload);
-                    $this->resetAllDown();
-                    $this->log('published from "' . $cand['id'] . '" (gold18=' . $payload['gold18'] . ')');
-                    return ['status' => 'ok', 'published' => $payload];
-                }
+            if (!$this->jumpGuardPasses($fieldSource, $merged, $lastGood, $proposals)) {
+                return $this->serveStale($lastGood);
             }
-            $this->log('all validated candidates rejected by jump guard');
-            return $this->serveStale($lastGood);
+
+            $sourceStr = implode('+', array_unique($contributed));
+            if ($sourceStr === '') {
+                $sourceStr = 'unknown';
+            }
+            $payload = $this->buildPayload($merged, $sourceStr, false, $fieldTs);
+            $this->writeAtomic($this->lastGoodPath, $payload);
+            $this->writeAtomic($this->publishPath, $payload);
+            $this->resetAllDown();
+            $this->log(($this->dryRun ? '[dry-run] would publish' : 'published') . ' from "' . $sourceStr . '" (gold18=' . $payload['gold18'] . ')');
+            return ['status' => 'ok', 'published' => $payload];
         } finally {
             $this->releaseLock();
         }
     }
 
-    /**
-     * اعتبارسنجی داده نرمال‌شده: finite/positive/integer، مرز منطقی، ترتیب سکه‌ها، نسبت مظنه.
-     * @return string[] خطاها (خالی = معتبر)
-     */
-    public function validateNormalized(array $n): array
+    /** گزارش تشخیصی برای --diagnose — بدون هیچ secret */
+    public function diagnose(): array
+    {
+        $state = $this->readJson($this->statePath) ?? [];
+        $ps = is_array($state['provider_state'] ?? null) ? $state['provider_state'] : [];
+        $out = [];
+        foreach ($this->providers as $provider) {
+            $pid = $provider->id();
+            $entry = ['id' => $pid, 'class' => get_class($provider)];
+            if (method_exists($provider, 'describe')) {
+                $entry['config'] = $provider->describe(); // بدون secret
+            }
+            $entry['rate_limit'] = method_exists($provider, 'isDue')
+                ? $provider->isDue($ps[$pid] ?? [])
+                : ['due' => true, 'reason' => 'n/a (stateless)'];
+            if (isset($ps[$pid]['daily']) && is_array($ps[$pid]['daily'])) {
+                $today = date('Ymd');
+                $entry['daily_calls_today'] = (int)($ps[$pid]['daily'][$today] ?? 0);
+            }
+            try {
+                $t0 = microtime(true);
+                $data = $provider->fetch();
+                $lat = (int)round((microtime(true) - $t0) * 1000);
+                $entry['reachable'] = true;
+                $entry['latency_ms'] = $lat;
+                $fields = [];
+                foreach (['gold18', 'mazaneh'] as $f) {
+                    if (isset($data[$f]) && is_numeric($data[$f]) && (float)$data[$f] > 0) {
+                        $fields[$f] = (int)$data[$f];
+                    }
+                }
+                foreach (($data['coins'] ?? []) as $k => $v) {
+                    if (is_numeric($v) && (float)$v > 0) {
+                        $fields['coins.' . $k] = (int)$v;
+                    }
+                }
+                $entry['parsed_fields'] = $fields;
+                $errors = $this->validatePartial($data);
+                $entry['validation'] = empty($errors) ? 'ok' : implode('; ', $errors);
+            } catch (Throwable $e) {
+                $entry['reachable'] = false;
+                $entry['error'] = $e->getMessage();
+            }
+            $out[] = $entry;
+        }
+        return [
+            'dry_run_note' => 'no secrets are included in this output',
+            'providers' => $out,
+        ];
+    }
+
+    /** اعتبارسنجی داده جزئی منبع — فقط روی فیلدهای ارائهشده */
+    public function validatePartial(array $data): array
     {
         $th = $this->config['thresholds'] ?? [];
         $errors = [];
-        foreach (['gold18', 'mazaneh'] as $f) {
-            $v = $n[$f] ?? null;
-            if (!is_numeric($v) || !is_finite((float)$v) || (float)$v <= 0) {
-                $errors[] = "$f invalid (must be finite positive number)";
+        $g = isset($data['gold18']) && is_numeric($data['gold18']) ? (float)$data['gold18'] : null;
+        if ($g !== null) {
+            if (!is_finite($g) || $g <= 0) {
+                $errors[] = 'gold18 invalid';
+            } elseif ($g < (float)($th['gold18_min'] ?? 100000)) {
+                $errors[] = "gold18 below plausible min ($g)";
+            } elseif ($g > (float)($th['gold18_max'] ?? 2000000000)) {
+                $errors[] = "gold18 above plausible max ($g)";
             }
         }
-        if (!empty($errors)) {
-            return $errors;
+        $m = isset($data['mazaneh']) && is_numeric($data['mazaneh']) ? (float)$data['mazaneh'] : null;
+        if ($m !== null && (!is_finite($m) || $m <= 0)) {
+            $errors[] = 'mazaneh invalid';
         }
-        $g = (float)$n['gold18'];
-        if ($g < (float)($th['gold18_min'] ?? 100000)) {
-            $errors[] = "gold18 below plausible min ($g)";
-        }
-        if ($g > (float)($th['gold18_max'] ?? 2000000000)) {
-            $errors[] = "gold18 above plausible max ($g)";
-        }
-        $coins = $n['coins'] ?? [];
-        if (!is_array($coins)) {
-            $errors[] = 'coins must be an array';
-            return $errors;
-        }
-        $coinMax = $g * (float)($th['coin_max_gold18_ratio'] ?? 100);
+        $coins = is_array($data['coins'] ?? null) ? $data['coins'] : [];
         foreach ($coins as $k => $v) {
             if (!is_numeric($v) || !is_finite((float)$v) || (float)$v < 0) {
                 $errors[] = "coins.$k invalid";
-            } elseif ((float)$v > $coinMax) {
-                $errors[] = "coins.$k implausible ($v > " . (int)$coinMax . ')';
+            } elseif ($g !== null && (float)$v > $g * (float)($th['coin_max_gold18_ratio'] ?? 100)) {
+                $errors[] = "coins.$k implausible vs gold18";
             }
         }
-        // sanity ترتیب: امامی ≥ نیم ≥ ربع (فقط وقتی هر دو > ۰ باشند)
+        // sanity ترتیب (فقط وقتی هر دو > ۰)
         if (($coins['emami'] ?? 0) > 0 && ($coins['nim'] ?? 0) > 0 && (float)$coins['emami'] < (float)$coins['nim']) {
             $errors[] = 'ordering sanity failed: emami < nim';
         }
         if (($coins['nim'] ?? 0) > 0 && ($coins['rob'] ?? 0) > 0 && (float)$coins['nim'] < (float)$coins['rob']) {
             $errors[] = 'ordering sanity failed: nim < rob';
         }
-        // نسبت مظنه/گرم ≈ 4.33 با تلورانس
-        $m = (float)$n['mazaneh'];
+        // خودسازگاری منبع: نسبت مظنه/گرم وقتی هر دو از همین منبع‌اند
+        if ($g !== null && $m !== null && $m > 0) {
+            $ratio = $m / $g;
+            $expected = (float)($th['mazaneh_ratio'] ?? 4.3318);
+            $tol = (float)($th['mazaneh_tolerance'] ?? 0.5);
+            if (abs($ratio - $expected) > $tol) {
+                $errors[] = sprintf('provider self-consistency: mazaneh/gold18 ratio %.3f outside %.3f ± %.2f', $ratio, $expected, $tol);
+            }
+        }
+        return $errors;
+    }
+
+    /** اعتبارسنجی داده merged نهایی */
+    public function validateNormalized(array $n): array
+    {
+        $th = $this->config['thresholds'] ?? [];
+        $errors = [];
+        $g = (float)($n['gold18'] ?? 0);
+        if ($g <= 0) {
+            $errors[] = 'gold18 missing';
+            return $errors;
+        }
+        $coins = is_array($n['coins'] ?? null) ? $n['coins'] : [];
+        $coinMax = $g * (float)($th['coin_max_gold18_ratio'] ?? 100);
+        foreach ($coins as $k => $v) {
+            if ($v === null) {
+                continue; // ارائه نشده — buildPayload صفر میگذارد
+            }
+            if (!is_numeric($v) || (float)$v < 0) {
+                $errors[] = "coins.$k invalid";
+            } elseif ((float)$v > $coinMax) {
+                $errors[] = "coins.$k implausible ($v > " . (int)$coinMax . ')';
+            }
+        }
+        if (($coins['emami'] ?? 0) > 0 && ($coins['nim'] ?? 0) > 0 && (float)$coins['emami'] < (float)$coins['nim']) {
+            $errors[] = 'ordering sanity failed: emami < nim';
+        }
+        if (($coins['nim'] ?? 0) > 0 && ($coins['rob'] ?? 0) > 0 && (float)$coins['nim'] < (float)$coins['rob']) {
+            $errors[] = 'ordering sanity failed: nim < rob';
+        }
+        $m = (float)($n['mazaneh'] ?? 0);
         if ($m > 0) {
             $ratio = $m / $g;
             $expected = (float)($th['mazaneh_ratio'] ?? 4.3318);
@@ -157,14 +311,53 @@ class PricePipeline
         return $errors;
     }
 
-    /**
-     * گارد پرش: تغیر بیش از max_jump_pct نسبت به last_good رد می‌شود،
-     * مگر با تأیید منبع دوم همسان در همین سیکل یا N اجر متوالی همسان (state).
-     */
-    private function jumpGuardPasses(string $candidateId, array $cand, ?array $lastGood, array $allValidated): bool
+    /** merge جزئی: هر فیلد فقط از اولین منبعِ اولویت‌دارِ ارائهکننده پر میشود */
+    private function mergeInto(array &$merged, array $data, string $pid, array &$fieldSource, array &$fieldTs, array &$proposals, array &$contributed, int $ts): void
     {
-        if ($lastGood === null || !isset($lastGood['gold18']) || (float)$lastGood['gold18'] <= 0) {
-            return true; // اولین داده موفق — گاردی برای مقایسه نیست
+        foreach (['gold18', 'mazaneh'] as $f) {
+            $v = $data[$f] ?? null;
+            if (is_numeric($v) && (float)$v > 0) {
+                $proposals[$f][] = ['id' => $pid, 'value' => (float)$v];
+                if ($merged[$f] === null) {
+                    $merged[$f] = (int)round((float)$v);
+                    $fieldSource[$f] = $pid;
+                    $fieldTs[$f] = $ts;
+                    $this->markContributed($contributed, $pid);
+                }
+            }
+        }
+        foreach (($data['coins'] ?? []) as $k => $v) {
+            if (!array_key_exists($k, $merged['coins'])) {
+                continue;
+            }
+            if (is_numeric($v) && (float)$v > 0) {
+                $field = 'coins.' . $k;
+                $proposals[$field][] = ['id' => $pid, 'value' => (float)$v];
+                if ($merged['coins'][$k] === null) {
+                    $merged['coins'][$k] = (int)round((float)$v);
+                    $fieldSource[$field] = $pid;
+                    $fieldTs[$field] = $ts;
+                    $this->markContributed($contributed, $pid);
+                }
+            }
+        }
+    }
+
+    private function markContributed(array &$contributed, string $pid): void
+    {
+        if (!in_array($pid, $contributed, true)) {
+            $contributed[] = $pid;
+        }
+    }
+
+    /**
+     * گارد پرش: تغیر بیش از max_jump_pct نسبت به last_good رد میشود،
+     * مگر با تأیید یک منبع دیگرِ ارائهکننده همان فیلد، یا N اجر متوالی همسان (state).
+     */
+    private function jumpGuardPasses(array $fieldSource, array $merged, ?array $lastGood, array $proposals): bool
+    {
+        if (!is_array($lastGood) || !isset($lastGood['gold18']) || (float)$lastGood['gold18'] <= 0) {
+            return true; // اولین داده موفق
         }
         $th = $this->config['thresholds'] ?? [];
         $maxPct = (float)($th['max_jump_pct'] ?? 5.0);
@@ -172,7 +365,7 @@ class PricePipeline
 
         $fields = ['gold18'];
         foreach (['emami', 'bahar', 'nim', 'rob', 'gerami'] as $k) {
-            if (($cand['coins'][$k] ?? 0) > 0 && (($lastGood['coins'][$k] ?? 0) > 0)) {
+            if (($merged['coins'][$k] ?? 0) > 0 && (($lastGood['coins'][$k] ?? 0) > 0)) {
                 $fields[] = 'coins.' . $k;
             }
         }
@@ -183,30 +376,29 @@ class PricePipeline
         $jumped = [];
 
         foreach ($fields as $f) {
-            $new = $f === 'gold18' ? (float)$cand['gold18'] : (float)$cand['coins'][substr($f, 6)];
+            $new = $f === 'gold18' ? (float)$merged['gold18'] : (float)$merged['coins'][substr($f, 6)];
             $old = $f === 'gold18' ? (float)$lastGood['gold18'] : (float)($lastGood['coins'][substr($f, 6)] ?? 0);
             if ($old <= 0 || $new <= 0) {
                 continue;
             }
             $pct = abs($new - $old) / $old * 100;
             if ($pct <= $maxPct) {
-                $newConsecutive[$f] = ['value' => $new, 'count' => 0]; // نرمال — شمارنده صفر
+                $newConsecutive[$f] = ['value' => $new, 'count' => 0];
                 continue;
             }
-            // تأیید با منبع دوم همسان در همین سیکل؟ (منبع خودش نمیتواند خودش را تأیید کند)
+            // تأیید متقاطع: یک منبع دیگرِ ارائهکننده همین فیلد با مقدار نزدیک
             $confirmedBySecond = false;
-            foreach ($allValidated as $other) {
-                if ($other['id'] === $candidateId) {
-                    continue;
+            foreach (($proposals[$f] ?? []) as $prop) {
+                if ($prop['id'] === ($fieldSource[$f] ?? '')) {
+                    continue; // منبع خودِ فیلد نمیتواند خودش را تأیید کند
                 }
-                $on = $f === 'gold18' ? (float)$other['data']['gold18'] : (float)($other['data']['coins'][substr($f, 6)] ?? 0);
-                if ($on > 0 && abs($on - $new) / $new * 100 <= $maxPct) {
+                if (abs((float)$prop['value'] - $new) / $new * 100 <= $maxPct) {
                     $confirmedBySecond = true;
                     break;
                 }
             }
             if ($confirmedBySecond) {
-                $this->log("jump on $f confirmed by a second provider — accepted");
+                $this->log("jump on $f confirmed by another provider — accepted");
                 continue;
             }
             // شمارش اجرهای متوالی همسان (±۱٪)
@@ -219,7 +411,7 @@ class PricePipeline
             $newConsecutive[$f] = ['value' => $new, 'count' => $count];
             if ($count >= $confirmRuns) {
                 $this->log("jump on $f accepted after $count consecutive consistent runs");
-                $newConsecutive[$f] = ['value' => $new, 'count' => 0]; // شمارنده پس از پذیرش صفر
+                $newConsecutive[$f] = ['value' => $new, 'count' => 0];
                 continue;
             }
             $jumped[] = sprintf('%s changed %.2f%% (%d → %d), consecutive %d/%d', $f, $pct, (int)$old, (int)$new, $count, $confirmRuns);
@@ -231,12 +423,12 @@ class PricePipeline
             return true;
         }
         foreach ($jumped as $j) {
-            $this->logRejected('jump-guard', [$j], $cand);
+            $this->logRejected('jump-guard', [$j], $merged);
         }
         return false;
     }
 
-    /** همه منابع شکست خوردند → آخرین داده خوب با stale=true و updated_at اصلی منتشر می‌شود */
+    /** همه منابع شکست خوردند → last good با stale=true و updated_at اصلی */
     private function serveStale(?array $lastGood): array
     {
         if (!is_array($lastGood) || !isset($lastGood['gold18']) || (float)$lastGood['gold18'] <= 0) {
@@ -244,37 +436,54 @@ class PricePipeline
             $this->log('all providers failed AND no usable last good — nothing published');
             return ['status' => 'error', 'published' => null];
         }
-        // هرگز داده تازه نمی‌سازیم: updated_at و مقادیر last_good دست‌نخورده می‌مانند
         $lastGood['stale'] = true;
         if (!isset($lastGood['source'])) {
             $lastGood['source'] = 'last-good';
         }
+        $lastGood['schema_version'] = (int)($lastGood['schema_version'] ?? 1);
         $this->writeAtomic($this->publishPath, $lastGood);
         $this->markAllDown();
         $this->log('all providers failed — serving stale last good (updated_at ' . $lastGood['updated_at'] . ')');
         return ['status' => 'stale', 'published' => $lastGood];
     }
 
-    private function buildPayload(array $n, string $source, bool $stale): array
+    private function buildPayload(array $n, string $source, bool $stale, array $fieldTs = []): array
     {
         $tz = new DateTimeZone((string)($this->config['timezone'] ?? 'Asia/Tehran'));
+        $nowIso = (new DateTime('now', $tz))->format(DateTime::ATOM);
         $coins = [];
         foreach (['emami', 'bahar', 'nim', 'rob', 'gerami'] as $k) {
             $coins[$k] = (int)($n['coins'][$k] ?? 0);
         }
-        return [
-            'updated_at' => (new DateTime('now', $tz))->format(DateTime::ATOM),
+        $payload = [
+            'schema_version' => 1,
+            'updated_at' => $nowIso,
             'source' => $source,
             'stale' => $stale,
             'gold18' => (int)$n['gold18'],
             'mazaneh' => (int)$n['mazaneh'],
             'coins' => $coins,
         ];
+        if (!empty($fieldTs)) {
+            $byField = [];
+            foreach ($fieldTs as $field => $ts) {
+                if ($ts > 0) {
+                    $byField[$field] = date('c', $ts);
+                }
+            }
+            if (!empty($byField)) {
+                $payload['updated_at_by_field'] = $byField; // additive — اپ ناشناخته‌ها را نادیده میگیرد
+            }
+        }
+        return $payload;
     }
 
-    /** نوشتن اتمیک: temp + rename — اپ هیچ‌وقت فایل نیمه‌نوشته نمی‌خواند */
+    /** نوشتن اتمیک: temp + rename — اپ هیچوقت فایل نیمهنوشته نمیخواند (در dry-run غیرفعال) */
     public function writeAtomic(string $path, array $data): void
     {
+        if ($this->dryRun) {
+            return;
+        }
         $dir = dirname($path);
         if (!is_dir($dir)) {
             @mkdir($dir, 0775, true);
@@ -292,10 +501,18 @@ class PricePipeline
 
     private function writeState(array $old, array $patch): void
     {
-        if ($this->statePath === '') {
+        if ($this->statePath === '' || $this->dryRun) {
             return;
         }
         $this->writeAtomic($this->statePath, array_merge(is_array($old) ? $old : [], $patch));
+    }
+
+    private function writeProviderState(array $state, array $ps): void
+    {
+        if ($this->statePath === '' || $this->dryRun) {
+            return;
+        }
+        $this->writeAtomic($this->statePath, array_merge(is_array($state) ? $state : [], ['provider_state' => $ps]));
     }
 
     // ─── lock ───
@@ -353,10 +570,7 @@ class PricePipeline
         }
     }
 
-    /**
-     * هوک هشدار — UNVERIFIED: قالب تلگرام با placeholder است.
-     * در config: alert_webhook_url = 'https://api.telegram.org/bot<TOKEN>/sendMessage?chat_id=<ID>&text='
-     */
+    /** هوک هشدار — UNVERIFIED: قالب تلگرام با placeholder است. */
     private function sendAlert(string $text): void
     {
         $url = (string)($this->config['cron']['alert_webhook_url'] ?? '');
@@ -364,7 +578,7 @@ class PricePipeline
             $this->log('ALERT (no webhook configured): ' . $text);
             return;
         }
-        $full = $url . rawurlencode($text); // UNVERIFIED: قالب تلگرام — با سرویس خودت تطبیق بده
+        $full = $url . rawurlencode($text); // UNVERIFIED: با سرویس خودت تطبیق بده
         @file_get_contents($full); // best-effort
         $this->log('ALERT sent: ' . $text);
     }

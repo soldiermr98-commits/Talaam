@@ -148,9 +148,11 @@ override دستی ┘   (تومان، نرمال)     (schema/بازه/        (
 اپ (Capacitor/PWA) ── fetch (۵s timeout) ──► https://…/server/public/prices.json ──► کش محلی ──► UI
 ```
 
-- **کد**: `server/fetch_prices.php` (ورود CLI + وب‌کرون با توکن timing-safe)، `server/src/PricePipeline.php`، `server/providers/*`، پیکربندی `server/config.example.php` → `config.php` (git-ignored)
+- **کد**: `server/fetch_prices.php` (CLI + `--dry-run` + `--diagnose` + وب‌کرون با توکن timing-safe)، `server/src/PricePipeline.php`، `server/src/ProviderFactory.php`، `server/providers/*` — پیکربندی: `server/config.example.php` → `config.php` (git-ignored)
+- **آداپتور کانفیگ‌محور**: `ConfigurableHttpProvider` — افزودن/تعویض منبع فقط با بلوک config (map مسیر نقطه‌ای، auth query/header/bearer از env، unit rial/toman + multiplier، پاکسازی ارقام فارسی/عربی، داده جزئی با merge و source مثل "a+b"، min_interval + daily_cap با کاهش خودکار سرعت). مرجع کامل + «افزودن منبع در ۵ دقیقه» + مهاجرت schema: `server/README_SERVER.md`
+- **نسخه‌بندی schema**: `schema_version: 1` فقط افزودنی؛ تغییر شکننده = فایل جدید prices.v2.json (اپ ناشناخته‌ها را نادیده می‌گیرد — تست شده)
 - **استقرار، تست از گوشی، چرخش کلید، عیب‌یابی و جدول PROVIDER DECISION**: `server/README_SERVER.md`
-- **تست‌ها**: `php server/tests/run_tests.php` → ۱۵ تست واقعاً اجرا شده (آپدیت نرمال، fallback بعد از timeout، مقادیر نامعتبر، خطای ۱۰x ریال، پرش ۲۰٪ رد→پذیرش پس از ۳ اجر متوالی، تأیید منبع دوم، همه‌خراب=stale با updated_at اصلی، بدون last_good=error بدون فایل جعلی، نوشتن اتمیک، lock، override دستی و انقضا، نسبت مظنه، ترتیب سکه‌ها، هشدار، استاب‌های unverified)
+- **تست‌ها**: `php server/tests/run_tests.php` → ۲۴ تست واقعاً اجرا شده (آپدیت نرمال، fallback بعد از timeout، مقادیر نامعتبر، خطای ۱۰x ریال، پرش ۲۰٪ رد→پذیرش پس از ۳ اجر متوالی، تأیید منبع دوم، همه‌خراب=stale با updated_at اصلی، بدون last_good=error بدون فایل جعلی، نوشتن اتمیک، lock، override دستی و انقضا، نسبت مظنه، ترتیب سکه‌ها، هشدار، استاب‌های unverified)
 - **schema نهایی**: فیلدهای `source` و `stale` اضافه شد — اپ `stale=true` را می‌فهمد و «نرخ قدیمی است» را کنار «بروزرسانی X دقیقه پیش» نشان می‌دهد (`src/components/PriceStrip.tsx`)
 - **امنیت**: secrets فقط در config.php (git-ignored)؛ `data/` از وب مسدود؛ توکن وب‌کرون با `hash_equals`؛ استاب‌ها بدون کلید RuntimeException می‌دهند — هیچ داده جعلی
 

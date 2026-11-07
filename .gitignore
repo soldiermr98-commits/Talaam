@@ -33,3 +33,6 @@ tools/
  ci-*.json
  ci-log.txt
 ci-last-run.txt
+
+# APK های کپی‌شده برای تست (نه در ریپو)
+/*.apk

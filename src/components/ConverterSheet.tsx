@@ -1,11 +1,17 @@
 // شیت مبدل واحدها — گرم، سوت، مثقال صرافی، مثقال شرعی، نخود
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type FocusEvent as ReactFocusEvent } from 'react';
 import { convertUnits, UNITS } from '../lib/calc';
 import { useApp } from '../state/AppContext';
 import { Sheet, Chip } from './ui';
 import { normalizeNumericInput, parseDecimal } from '../lib/numbers';
 import { ScaleIcon } from './icons';
+
+function focusEnd(e: ReactFocusEvent<HTMLInputElement>): void {
+  const el = e.currentTarget;
+  const len = el.value.length;
+  requestAnimationFrame(() => el.setSelectionRange(len, len));
+}
 
 export function ConverterSheet({ onClose }: { onClose: () => void }) {
   const { fmtWeight } = useApp();
@@ -28,6 +34,7 @@ export function ConverterSheet({ onClose }: { onClose: () => void }) {
           dir="ltr"
           value={value != null && value > 0 ? String(value).replace('.', '٫') : ''}
           onChange={(e) => handleChange(e.target.value)}
+          onFocus={focusEnd}
           placeholder="مقدار را وارد کن…"
           aria-label="مقدار"
         />

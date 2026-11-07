@@ -23,13 +23,13 @@ abstract class BaseProvider implements ProviderInterface
     }
 
     /** GET یک JSON؛ با retry و backoff؛ شکست → RuntimeException */
-    protected function httpGetJson(string $url): array
+    protected function httpGetJson(string $url, array $headers = []): array
     {
         $attempt = 0;
         $lastError = '';
         while ($attempt <= $this->retries) {
             try {
-                return $this->httpGetJsonOnce($url);
+                return $this->httpGetJsonOnce($url, $headers);
             } catch (Throwable $e) {
                 $lastError = $e->getMessage();
                 $attempt++;
@@ -41,9 +41,9 @@ abstract class BaseProvider implements ProviderInterface
         throw new RuntimeException(static::class . " HTTP failed after " . ($this->retries + 1) . " attempts: $lastError");
     }
 
-    private function httpGetJsonOnce(string $url): array
+    private function httpGetJsonOnce(string $url, array $headers = []): array
     {
-        $raw = $this->httpGet($url);
+        $raw = $this->httpGet($url, $headers);
         $data = json_decode($raw, true);
         if (!is_array($data)) {
             throw new RuntimeException('response is not a valid JSON object');
@@ -52,17 +52,25 @@ abstract class BaseProvider implements ProviderInterface
     }
 
     /** GET خام؛ با curl در صورت وجود وگرنه stream */
-    protected function httpGet(string $url): string
+    protected function httpGet(string $url, array $headers = []): string
     {
         if (function_exists('curl_init')) {
             $ch = curl_init($url);
-            curl_setopt_array($ch, [
+            $opt = [
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_TIMEOUT => $this->httpTimeout,
                 CURLOPT_CONNECTTIMEOUT => $this->httpTimeout,
                 CURLOPT_FOLLOWLOCATION => true,
                 CURLOPT_USERAGENT => 'talam-prices/1.0',
-            ]);
+            ];
+            $hdrs = [];
+            foreach ($headers as $k => $v) {
+                $hdrs[] = (is_int($k) ? $v : $k . ': ' . $v);
+            }
+            if (!empty($hdrs)) {
+                $opt[CURLOPT_HTTPHEADER] = $hdrs;
+            }
+            curl_setopt_array($ch, $opt);
             $body = curl_exec($ch);
             $err = curl_error($ch);
             $code = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);

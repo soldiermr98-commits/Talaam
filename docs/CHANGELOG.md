@@ -37,6 +37,14 @@
 
 ## نسخه سرور (خط تولید نرخ) — همراه 1.0.0
 
+### آداپتور کانفیگ‌محور (بهروزرسانی)
+
+- `ConfigurableHttpProvider`: افزودن/تعویض منبع فقط با config (map نقطه‌ای، auth query/header/bearer از env، unit rial/toman + multiplier، پاکسازی ارقام فارسی، داده جزئی با merge و source "a+b"، min_interval، daily_cap با کاهش خودکار سرعت)
+- `php fetch_prices.php --diagnose` و `--dry-run`
+- `schema_version: 1` + `updated_at_by_field` در خروجی (افزودنی — اپ ناشناخته‌ها را نادیده میگیرد)
+- ثبت منبع هر فیلد در state (لاگ داخلی)
+- ۲۴ تست PHP (۹ تست جدید)
+
 - `server/`: pipeline کامل PHP + cron — زنجیره منابع با fallback، validation (بازه/ترتیب سکه‌ها/نسبت مظنه)، jump-guard (≤۵٪ با تأیید منبع دوم یا ۳ اجر متوالی)، انتشار اتمیک، lock، لاگ چرخشی، هشدار اختیاری، override دستی با انقضا
 - ۱۵ تست PHP واقعاً اجرا شده (`php server/tests/run_tests.php`)
 - استاب‌های UNVERIFIED برای دو نوع API ایرانی (endpoint/کلید باید توسط مالک پس از بررسی مستندات رسمی پر شود)

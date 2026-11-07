@@ -1,9 +1,17 @@
 // ورودی عددی تومانی با جداکننده هزارگان خودکار و نمایش حروف فارسی
 
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type FocusEvent as ReactFocusEvent } from 'react';
 import { formatMoney, formatWeight, groupThousands, mapDigits, moneyToPersianWords, normalizeNumericInput, parseDecimal } from '../lib/numbers';
 import { MAX_WEIGHT_DECIMALS } from '../config';
 import { useApp } from '../state/AppContext';
+
+/** فوکوس: مکان‌نما به انتهای عدد — کاربر بلافاصله میتواند بکشد یا ادامه دهد */
+function focusEnd(e: ReactFocusEvent<HTMLInputElement>, setFocused?: (v: boolean) => void): void {
+  if (setFocused) setFocused(true);
+  const el = e.currentTarget;
+  const len = el.value.length;
+  requestAnimationFrame(() => el.setSelectionRange(len, len));
+}
 
 interface MoneyInputProps {
   label?: string;
@@ -61,7 +69,7 @@ export function MoneyInput({ label, hint, value, onChange, placeholder, showWord
           value={text}
           placeholder={placeholder ? mapDigits(placeholder, settings.digits) : ''}
           onChange={(e) => handleChange(e.target.value)}
-          onFocus={() => (focusedRef.current = true)}
+          onFocus={(e) => focusEnd(e, (v) => (focusedRef.current = v))}
           onBlur={() => {
             focusedRef.current = false;
             setText(formatDisplay(value, settings.digits));
@@ -128,7 +136,7 @@ export function WeightInput({
           value={text}
           placeholder={placeholder ? mapDigits(placeholder, settings.digits) : ''}
           onChange={(e) => handleChange(e.target.value)}
-          onFocus={() => (focusedRef.current = true)}
+          onFocus={(e) => focusEnd(e, (v) => (focusedRef.current = v))}
           onBlur={() => {
             focusedRef.current = false;
             setText(formatWeightDisplay(value, settings.digits));
@@ -194,7 +202,7 @@ export function PercentInput({
           dir="ltr"
           value={text}
           onChange={(e) => handleChange(e.target.value)}
-          onFocus={() => (focusedRef.current = true)}
+          onFocus={(e) => focusEnd(e, (v) => (focusedRef.current = v))}
           onBlur={() => {
             focusedRef.current = false;
             const n = parseDecimal(text);

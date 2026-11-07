@@ -117,27 +117,30 @@ button {
 
 /* ───────── نوار بالا ───────── */
 .topbar {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  min-height: 58px;
   padding: 12px 0 8px;
   gap: 8px;
 }
 
 .logo {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 21px;
-  font-weight: 800;
-  color: var(--text);
+  justify-content: center;
   user-select: none;
 }
 
 .logo-img {
-  width: 38px;
-  height: 38px;
-  border-radius: 11px;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
   display: block;
 }
 
@@ -198,6 +201,7 @@ button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
+  margin-top: 12px; /* فاصله یکنواخت با کارت قبلی — مطابق طرح */
 }
 
 .grid-2 > * {
@@ -356,8 +360,9 @@ button {
   font-family: inherit;
   font-size: 22px;
   font-weight: 700;
-  text-align: right;
+  text-align: center; /* اعداد وسط‌چین — مکان‌نما با focus به انتها منتقل می‌شود */
   padding: 0;
+  caret-color: var(--gold-strong);
 }
 
 .field input::placeholder {

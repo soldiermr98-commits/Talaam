@@ -6,28 +6,94 @@
 
 ```
 server/
-├── fetch_prices.php          # نقطه ورود cron (CLI + وب‌کرون با توکن)
+├── fetch_prices.php          # نقطه ورود: cron | --dry-run | --diagnose | وب‌کرون با توکن
 ├── config.example.php        # الگوی پیکربندی → کپی به config.php (git-ignored)
 ├── config.php                # ⚠️ محلی — هرگز کامیت نشود
-├── src/PricePipeline.php     # هسته: زنجیره منابع، validation، jump-guard، انتشار اتمیک
+├── src/PricePipeline.php     # هسته: merge جزئی، validation، jump-guard، انتشار اتمیک، stale
+├── src/ProviderFactory.php   # رجیستری منابع از config
 ├── providers/
-│   ├── ProviderInterface.php # رابط مشترک
-│   ├── BaseProvider.php      # HTTP با تایم‌اوت/retry + تبدیل ریال→تومان
-│   ├── TemplateProvider.php  # قالب ساخت آداپتور جدید (کپی کن)
-│   ├── NavasanStyleProvider.php  # ⚠️ UNVERIFIED استاب
-│   ├── BrsapiStyleProvider.php   # ⚠️ UNVERIFIED استاب
-│   └── ManualProvider.php    # فایل override دستی با انقضا
+│   ├── ProviderInterface.php           # رابط مشترک
+│   ├── BaseProvider.php                # HTTP با تایم‌اوت/retry + تبدیل ریال→تومان
+│   ├── ConfigurableHttpProvider.php    # ⭐ آداپتور همه‌کاره — همه‌چیز از config
+│   ├── ManualProvider.php              # override دستی با انقضا (آخرین fallback)
+│   ├── TemplateProvider.php            # قالب آداپتور سفارشی
+│   ├── NavasanStyleProvider.php        # ⚠️ UNVERIFIED استاب
+│   └── BrsapiStyleProvider.php         # ⚠️ UNVERIFIED استاب
 ├── public/
 │   ├── prices.json           # فایل منتشرشده (اپ همین را می‌خواند)
 │   └── .htaccess             # Content-Type / Cache-Control: max-age=60 / CORS / gzip
 ├── data/                     # محلی — از وب مسدود (.htaccess)
 │   ├── last_good.json        # آخرین داده معتبر
-│   ├── state.json            # شمارنده اجرهای متوالی + وضعیت هشدار
-│   ├── override.json         # فایل override اضطراری (نمونه: override.json.example)
+│   ├── state.json            # شمارنده‌ها، منبع هر فیلد، وضعیت هشدار
+│   ├── override.json         # override اضطراری (نمونه: override.json.example)
 │   └── logs/                 # app.log (چرخشی) + rejected.log
-├── tests/run_tests.php       # تست‌ها — php tests/run_tests.php
+├── tests/run_tests.php       # ۲۴ تست — php tests/run_tests.php
 └── cloudflare-worker.js      # گزینه ثانویه (توصیه‌شده نیست برای ایران)
 ```
+
+## دستورها
+
+```bash
+php fetch_prices.php               # اجرای کامل و انتشار
+php fetch_prices.php --dry-run     # fetch+validate بدون انتشار (خروجی فقط نمایشی)
+php fetch_prices.php --diagnose    # سلامت هر منبع: reachable، latency، فیلدهای پارس‌شده، validation، rate-limit — بدون هیچ secret
+php tests/run_tests.php            # ۲۴ تست
+```
+
+## مرجع کانفیگ ConfigurableHttpProvider
+
+افزودن/تعویض منبع = فقط ویرایش `config.php`. هیچ تغییری در کد یا اپ لازم نیست.
+
+| گزینه | اجباری | توضیح |
+|---|---|---|
+| `id` | ✔ | شناسه کوتاه؛ در `source` خروجی می‌آید |
+| `url` | ✔ | آدرس https API |
+| `map` | ✔ | نگاشت فیلدها: `'gold18' => ['path' => 'data.gold.18k.price', 'unit' => 'toman'\|'rial', 'multiplier' => 1.0]` — فیلدهای مجاز: `gold18`, `mazaneh`, `coins.emami/bahar/nim/rob/gerami` (همه اختیاری جز حداقل یکی) |
+| `method` | | GET (پیش‌فرض) یا POST |
+| `query` / `headers` | | پارامتر/هدرهای سفارشی |
+| `auth` | | `{type: 'query'\|'header'\|'bearer', name: 'api_key', key: '…' یا key_env: 'ENV_NAME'}` — کلید فقط از config/env |
+| `enabled` | | پیش‌فرض true؛ تا تکمیل تأیید false بگذار |
+| `max_age_seconds` | | حداکثر عمر داده کش این منبع برای استفاده هنگام skip |
+| `min_interval_seconds` | | حداقل فاصله فراخوانی واقعی (احترام به rate limit) |
+| `daily_cap` | | سقف روزانه؛ نزدیک سقف فاصله خودکار ۲ برابر؛ رسیدن به سقف → skip |
+| `timeout/retries/backoff` | | از بخش `http` config ارث می‌برد |
+
+- **پارس عدد**: ارقام فارسی/عربی، جداکننده هزارگان (٬ , ، فاصله) و ممیز (٫ .) خودکار پاک می‌شوند
+- **مسیر نقطه‌ای**: `data.gold.18k.price`؛ ایندکس آرایه: `items.0.price`؛ کلید انجمنی: `coins.18k`
+- **داده جزئی مجاز**: منبع میتواند فقط بعضی فیلدها را بدهد؛ pipeline در ترتیب اولویت merge میکند و `source` خروجی مثل `a+b` میشود؛ منبعِ هر فیلد در `data/state.json` (کلید `field_source`) ثبت میشود
+- **freshness**: داده کش منبع فقط تا `max_age_seconds` استفاده میشود؛ هرگز با داده قدیمی‌تر mix نمیشود
+
+## افزودن منبع در ۵ دقیقه (مثال کارشده با منبع ساختگی)
+
+1. مستندات رسمی منبع را بخوان: endpoint، پارامتر کلید، نام فیلدها، واحد (ریال/تومان)، محدودیت نرخ
+2. در `config.php` یک بلوک اضافه کن (بالاتر از ManualProvider):
+
+```php
+['class' => 'ConfigurableHttpProvider', 'options' => [
+    'id' => 'my-source',
+    'url' => 'https://api.mysource.tld/gold',
+    'auth' => ['type' => 'bearer', 'key' => 'کلید-واقعی-از-پنل-منبع'],
+    'map' => [
+        'gold18' => ['path' => 'rates.gold_18k', 'unit' => 'rial'],   // ریال → تومان خودکار
+        'coins.emami' => ['path' => 'rates.coin_emami', 'unit' => 'toman'],
+    ],
+    'min_interval_seconds' => 300,
+    'daily_cap' => 300,
+]],
+```
+
+3. تست: `php fetch_prices.php --diagnose` (بدون انتشار) → فیلدهای پارس‌شده و validation را ببین → `--dry-run` → در صورت درستی اجرای واقعی
+4. آپ فقط `/prices.json` را می‌خواند — هیچ تغییری در اپ لازم نیست
+
+## نسخه‌بندی schema (قاعده تکاملی)
+
+- `schema_version: 1` در خروجی؛ تغییرات **فقط افزودنی** (فیلد جدید) مجاز است و اپ ناشناخته‌ها را نادیده می‌گیرد (تست‌شده)
+- تغییر **شکننده** (تغییر نام/نوع فیلد موجود) → فایل جدید `prices.v2.json`؛ نسخه‌های قدیمی اپ با `prices.json` به کار ادامه میدهند
+- اپ پارسر را برای `schema_version` جاافتاده هم tolerant نگه میدارد (تست: `src/lib/__tests__/audit.test.ts`)
+
+## per-field freshness
+
+`updated_at_by_field` در خروجی (افزودنی) زمان هر فیلد را جدا گزارش میکند — چون merge جزئی ممکن است فیلدها از منابع مختلف باشند. ارزان بود و پیاده شد.
 
 ## استقرار روی هاست اشتراکی (cPanel/DirectAdmin)
 
@@ -83,7 +149,7 @@ server/
 ```bash
 php tests/run_tests.php
 ```
-۱۵ تست: آپدیت نرمال، fallback بعد از timeout، مقادیر نامعتبر، خطای ۱۰x ریال، پرش ۲۰٪ (رد → پذیرش بعد از N اجر)، تأیید منبع دوم، همه منابع خراب (stale)، همه خراب بدون last_good (error، هیچ فایل جعلی)، نوشتن اتمیک، lock، override دستی و انقضای آن، نسبت مظنه، ترتیب سکه‌ها، هشدار، رفتار استاب‌های unverified.
+۲۴ تست: هسته (آپدیت نرمال، fallback، مقادیر نامعتبر، خطای ۱۰x ریال، پرش ۲۰٪ رد→پذیرش با N اجر، تأیید منبع دوم، همه‌خراب=stale، بدون last_good=error، اتمیک، lock، override+انقضا، نسبت مظنه، ترتیب، هشدار، استاب‌ها) + آداپتور کانفیگ‌محور (validation کانفیگ، مسیر تو در تو و ایندکس آرایه، پاکسازی ارقام فارسی، ریال→تومان و multiplier، merge جزئی دو منبع با source "a+b"، rate-limit skip با کش، daily cap، diagnose بدون secret، dry-run، Factory با کلاس ناشناخته) + سازگاری schema_version در اپ (تست TypeScript).
 
 ## PROVIDER DECISION — جدول تصمیم منبع نرخ
 

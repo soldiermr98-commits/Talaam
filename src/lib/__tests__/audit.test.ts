@@ -107,6 +107,25 @@ describe('audit: schema سرور — stale/source و مقادیر غیرمنطق
     expect(d?.coins.emami).toBe(88_000_000);
   });
 
+  it('schema_version و فیلدهای آینده سرور → نادیده گرفته میشوند (نسخه‌بندی افزودنی)', () => {
+    const d = validatePriceData({
+      schema_version: 1,
+      updated_at: '2026-01-01T12:00:00+03:30',
+      source: 'example-provider',
+      stale: false,
+      gold18: 8_000_000,
+      mazaneh: 34_654_400,
+      coins: { emami: 88_000_000 },
+      updated_at_by_field: { gold18: '2026-01-01T12:00:00+03:30' },
+      some_future_field: { nested: true },
+    });
+    expect(d?.gold18).toBe(8_000_000);
+    expect(d?.source).toBe('example-provider');
+    // بدون schema_version هم کاملاً سازگار است (نسخه‌های قدیمی فایل)
+    const d2 = validatePriceData({ gold18: 8_000_000, mazaneh: 0 });
+    expect(d2?.gold18).toBe(8_000_000);
+  });
+
   it('مقادیر غیرمنطقی رد می‌شوند: gold18 زیر مرز، بالای مرز', () => {
     expect(validatePriceData({ gold18: 500 })).toBeNull(); // زیر ۱۰۰هزار — قطعاً غلط
     expect(validatePriceData({ gold18: 3_000_000_000 })).toBeNull(); // بالای مرز

@@ -12,10 +12,12 @@ ini_set('display_errors', '1');
 $serverDir = dirname(__DIR__);
 require $serverDir . '/providers/ProviderInterface.php';
 require $serverDir . '/providers/BaseProvider.php';
+require $serverDir . '/providers/ConfigurableHttpProvider.php';
 require $serverDir . '/providers/TemplateProvider.php';
 require $serverDir . '/providers/NavasanStyleProvider.php';
 require $serverDir . '/providers/BrsapiStyleProvider.php';
 require $serverDir . '/providers/ManualProvider.php';
+require $serverDir . '/src/ProviderFactory.php';
 require $serverDir . '/src/PricePipeline.php';
 
 // ─── هارنس ───
@@ -70,6 +72,43 @@ class FakeProvider implements ProviderInterface
             throw $this->result;
         }
         return $this->result;
+    }
+}
+
+/** منبعی که همیشه skip میشود و فقط از کش سرو میکند */
+class SkipProvider implements ProviderInterface
+{
+    public function id(): string
+    {
+        return 'skipped';
+    }
+
+    public function isDue(array $st): array
+    {
+        return ['due' => false, 'reason' => 'min interval'];
+    }
+
+    public function getMaxAgeSeconds(): ?int
+    {
+        return 3600;
+    }
+
+    public function fetch(): array
+    {
+        throw new RuntimeException('must not be called when not due');
+    }
+}
+
+/** آداپتور HTTP بدون شبکه — fixture ثابت برای تست mapping و auth */
+class StubHttpProvider extends ConfigurableHttpProvider
+{
+    /** @var array */
+    public static $fixture = [];
+
+    public function fetch(): array
+    {
+        $this->buildRequest(); // ساخت درخواست (auth/query) — خطای کانفیگ اینجا ظاهر میشود
+        return $this->mapPayload(self::$fixture);
     }
 }
 
@@ -146,11 +185,10 @@ function readJson(string $path): array
     return json_decode((string)file_get_contents($path), true);
 }
 
-// ─── تست‌ها ───
+// ─── تست‌ها: هسته pipeline ───
 echo "== talam price pipeline tests (PHP " . PHP_VERSION . ") ==\n";
 
-// ۱) آپدیت نرمال
-t('normal update: اولین اجرا منتشر می‌شود با stale=false و source درست', function () {
+t('normal update: اولین اجرا منتشر میشود با stale=false و source درست', function () {
     $dir = tmpDir();
     $cfg = makeConfig($dir);
     $p = new PricePipeline($cfg, [new FakeProvider('fake1', validData(8000000))]);
@@ -162,12 +200,12 @@ t('normal update: اولین اجرا منتشر می‌شود با stale=false 
     assertSame2(8000000, $pub['gold18']);
     assertSame2('integer', gettype($pub['gold18']));
     assertTrue2((bool)preg_match('/\+03:30$/', $pub['updated_at']), 'updated_at must be ISO8601 +03:30: ' . $pub['updated_at']);
+    assertSame2(1, $pub['schema_version']);
     assertSame2($pub['updated_at'], readJson($cfg['paths']['last_good'])['updated_at']);
-    assertSame2([], array_filter(glob($dir . '/**/*.tmp.*'), 'is_string'), 'no temp files left');
+    assertSame2([], array_filter(glob($dir . '/*.tmp.*') ?: [], 'is_string'), 'no temp files left');
     deleteDir($dir);
 });
 
-// ۲) تایم‌اوت منبع اول → fallback به منبع دوم
 t('provider timeout then fallback به منبع دوم', function () {
     $dir = tmpDir();
     $cfg = makeConfig($dir);
@@ -182,8 +220,7 @@ t('provider timeout then fallback به منبع دوم', function () {
     deleteDir($dir);
 });
 
-// ۳) مقادیر نامعتبر رد می‌شوند
-t('invalid values رد و منبع بعدی استفاده می‌شود', function () {
+t('invalid values رد و منبع بعدی استفاده میشود', function () {
     $dir = tmpDir();
     $cfg = makeConfig($dir);
     $bad1 = ['gold18' => 0, 'mazaneh' => 0, 'coins' => []];
@@ -200,8 +237,7 @@ t('invalid values رد و منبع بعدی استفاده می‌شود', funct
     deleteDir($dir);
 });
 
-// ۴) خطای ۱۰x واحد (ریال به‌جای تومان) → رد؛ تبدیل درست ریتال هم تست می‌شود
-t('10x unit error (rial instead of toman) رد می‌شود و stale سرو می‌شود', function () {
+t('10x unit error (rial instead of toman) رد میشود و stale سرو میشود', function () {
     $dir = tmpDir();
     $cfg = makeConfig($dir);
     $good = new FakeProvider('good', validData(8000000));
@@ -209,7 +245,7 @@ t('10x unit error (rial instead of toman) رد می‌شود و stale سرو م�
     $first = $p1->run();
     assertSame2('ok', $first['status']);
 
-    // منبع مقدار را ریال گزارش کرده و ۱۰x ارسال شده (۸۰,۰۰۰,۰۰۰ به‌جای ۸٬۰۰۰٬۰۰۰)
+    // منبع مقدار را ۱۰x فرستاده (ریال بهجای تومان): ۸۰,۰۰۰,۰۰۰ بهجای ۸٬۰۰۰٬۰۰۰
     $tenX = new FakeProvider('tenx', ['gold18' => 80000000.0, 'mazaneh' => 346544000.0, 'coins' => []]);
     $p2 = new PricePipeline($cfg, [$tenX]);
     $r = $p2->run();
@@ -222,19 +258,23 @@ t('10x unit error (rial instead of toman) رد می‌شود و stale سرو م�
     $ref = new ReflectionMethod('BaseProvider', 'toToman');
     $ref->setAccessible(true);
     $stub = new class ([] , []) extends BaseProvider {
-        public function id(): string { return 'x'; }
-        public function fetch(): array { return []; }
+        public function id(): string
+        {
+            return 'x';
+        }
+        public function fetch(): array
+        {
+            return [];
+        }
     };
     assertSame2(8000000, $ref->invoke($stub, 80000000, 'rial'));
     assertSame2(8000000, $ref->invoke($stub, 8000000, 'toman'));
     deleteDir($dir);
 });
 
-// ۵) پرش ناگهانی ۲۰٪ → رد در ۲ اجر اول، پذیرش در اجر سوم (N اجر متوالی)
 t('sudden 20% jump رد میشود؛ پس از N اجر متوالی پذیرفته میشود', function () {
     $dir = tmpDir();
     $cfg = makeConfig($dir);
-    // seed: اول last_good = ۸ میلیون
     $seed = new PricePipeline($cfg, [new FakeProvider('good', validData(8000000))]);
     assertSame2('ok', $seed->run()['status']);
 
@@ -251,8 +291,7 @@ t('sudden 20% jump رد میشود؛ پس از N اجر متوالی پذیرف�
     deleteDir($dir);
 });
 
-// ۶) تأیید با منبع دوم در همان سیکل
-t('20% jump با تأیید منبع دوم بلافاصله پذیرفته می‌شود', function () {
+t('20% jump با تأیید منبع دوم بلافاصله پذیرفته میشود', function () {
     $dir = tmpDir();
     $cfg = makeConfig($dir);
     $p = new PricePipeline($cfg, [
@@ -265,7 +304,6 @@ t('20% jump با تأیید منبع دوم بلافاصله پذیرفته می
     deleteDir($dir);
 });
 
-// ۷) همه منابع خراب → stale با updated_at اصلی
 t('all providers down → stale با updated_at اصلی و بدون ساخت داده تازه', function () {
     $dir = tmpDir();
     $cfg = makeConfig($dir);
@@ -286,7 +324,6 @@ t('all providers down → stale با updated_at اصلی و بدون ساخت د
     deleteDir($dir);
 });
 
-// ۸) همه خراب + last_good موجود نیست → error و هیچ فایلی منتشر نمی‌شود
 t('all down + no last good → error, هیچ فایل mock/ساختگی منتشر نمیشود', function () {
     $dir = tmpDir();
     $cfg = makeConfig($dir);
@@ -299,8 +336,7 @@ t('all down + no last good → error, هیچ فایل mock/ساختگی منتش
     deleteDir($dir);
 });
 
-// ۹) حفاظت فایل نیمه‌نوشته (اتمیک) + لاگ ردشدگی
-t('atomic write: بدون فایل tmp باقی‌مانده و فایل مقصد سالم', function () {
+t('atomic write: بدون فایل tmp باقیمانده و فایل مقصد سالم', function () {
     $dir = tmpDir();
     $cfg = makeConfig($dir);
     $p = new PricePipeline($cfg, [new FakeProvider('good', validData(8000000))]);
@@ -314,7 +350,6 @@ t('atomic write: بدون فایل tmp باقی‌مانده و فایل مقص�
     deleteDir($dir);
 });
 
-// ۱۰) لاک: اجرای همزمان دوم اجرا نمی‌شود
 t('lock: run دوم در حالت قفل، publish نمیکند', function () {
     $dir = tmpDir();
     $cfg = makeConfig($dir);
@@ -322,7 +357,6 @@ t('lock: run دوم در حالت قفل، publish نمیکند', function () {
     $p = new PricePipeline($cfg, [$good]);
     $p->run(); // داده اولیه
 
-    // قفل خارجی بگیر
     $lockFp = fopen($cfg['cron']['lock_path'], 'c');
     flock($lockFp, LOCK_EX);
 
@@ -333,7 +367,7 @@ t('lock: run دوم در حالت قفل، publish نمیکند', function () {
 
     flock($lockFp, LOCK_UN);
     fclose($lockFp);
-    // پس از آزادسازی، گارد پرش فعال است: پرش ۲۰٪ در اجرهای ۱ و ۲ رد و در اجر ۳ (متوالی) پذیرفته میشود
+    // پس از آزادسازی، گارد پرش فعال است: ۲۰٪ در اجرهای ۱ و ۲ رد و در اجر ۳ پذیرفته میشود
     $r2 = $jumped->run();
     assertSame2('stale', $r2['status'], 'after release: jump rejected (consecutive 1/3)');
     $r3 = $jumped->run();
@@ -343,8 +377,7 @@ t('lock: run دوم در حالت قفل، publish نمیکند', function () {
     deleteDir($dir);
 });
 
-// ۱۱) override دستی با انقضا
-t('manual override با expires_at → منتشر میشود؛ منقضی → نادیده', function () {
+t('manual override با expires_at → منتشر میشود؛ منقضی → stale از last good', function () {
     $dir = tmpDir();
     $cfg = makeConfig($dir);
     $cfg['paths']['override'] = $dir . '/override.json';
@@ -362,12 +395,10 @@ t('manual override با expires_at → منتشر میشود؛ منقضی → ن
     assertSame2(88000000, $r['published']['coins']['emami']);
     assertSame2(0, $r['published']['coins']['nim']);
 
-    // منقضی کن
     file_put_contents($cfg['paths']['override'], json_encode([
         'expires_at' => date('c', time() - 60),
         'gold18' => 7777777,
     ]));
-    // منبع throw میشود، ولی last_good از انتشار قبلی موجود است → stale با همان داده
     $r2 = $p->run();
     assertSame2('stale', $r2['status'], 'expired override → serve last good as stale');
     assertSame2(true, $r2['published']['stale']);
@@ -375,7 +406,6 @@ t('manual override با expires_at → منتشر میشود؛ منقضی → ن
     deleteDir($dir);
 });
 
-// ۱۲) نسبت مظنه خارج از تلورانس → رد
 t('mazaneh/gold18 ratio خارج از تلورانس رد میشود', function () {
     $dir = tmpDir();
     $cfg = makeConfig($dir);
@@ -385,7 +415,6 @@ t('mazaneh/gold18 ratio خارج از تلورانس رد میشود', function 
     deleteDir($dir);
 });
 
-// ۱۳) sanity ترتیب سکه‌ها
 t('ordering sanity: emami < nim رد میشود', function () {
     $dir = tmpDir();
     $cfg = makeConfig($dir);
@@ -395,8 +424,7 @@ t('ordering sanity: emami < nim رد میشود', function () {
     deleteDir($dir);
 });
 
-// ۱۴) هشدار همه-منابع-خراب
-t('alert: بعد از همه خرابی‌ها هشدار در لاگ می‌افتد (webhook خالی)', function () {
+t('alert: بعد از همه خرابیها هشدار در لاگ میافتد (webhook خالی)', function () {
     $dir = tmpDir();
     $cfg = makeConfig($dir, ['cron' => ['alert_after_minutes' => 0]]);
     $p = new PricePipeline($cfg, [new FakeProvider('d', new RuntimeException('down'))]);
@@ -407,21 +435,182 @@ t('alert: بعد از همه خرابی‌ها هشدار در لاگ می‌ا�
     deleteDir($dir);
 });
 
-// ۱۵) استاب‌های UNVERIFIED بدون config → RuntimeException (نه سکوت)
 t('unverified stubs بدون پیکربندی throw میکنند (نه داده جعلی)', function () {
     foreach (['NavasanStyleProvider', 'BrsapiStyleProvider'] as $cls) {
         $stub = new $cls(['endpoint' => 'TODO-verify', 'api_key' => 'REPLACE_ME']);
+        $threw = false;
         try {
             $stub->fetch();
-            throw new Exception("$cls must throw before fetching");
         } catch (RuntimeException $e) {
-            assertTrue2(strpos($e->getMessage(), "not configured") !== false || strpos($e->getMessage(), 'TODO') !== false, "$cls threw: " . $e->getMessage());
+            $threw = true;
+            assertTrue2(strpos($e->getMessage(), 'not configured') !== false || strpos($e->getMessage(), 'TODO') !== false, "$cls threw: " . $e->getMessage());
         }
+        assertTrue2($threw, "$cls must throw before fetching");
     }
     deleteDir(tmpDir());
 });
 
-// ─── جمع‌بندی ───
+// ─── تست‌ها: آداپتور کانفیگ‌محور ───
+
+t('config validation: url/map/auth بد → RuntimeException واضح', function () {
+    $bads = [
+        ['id' => 'x', 'map' => ['gold18' => ['path' => 'a.b']]],                        // بدون url
+        ['id' => 'x', 'url' => 'not-a-url', 'map' => ['gold18' => ['path' => 'a.b']]],  // url نامعتبر
+        ['id' => 'x', 'url' => 'https://api.example.invalid/', 'map' => ['bogus' => ['path' => 'a']]], // فیلد ناشناخته
+        ['id' => 'x', 'url' => 'https://api.example.invalid/', 'map' => ['gold18' => ['path' => 'a.b']], 'auth' => ['type' => 'weird']], // auth نامعتبر
+    ];
+    foreach ($bads as $bad) {
+        $threw = false;
+        try {
+            new ConfigurableHttpProvider($bad, []);
+        } catch (RuntimeException $e) {
+            $threw = true;
+        }
+        assertTrue2($threw, 'expected RuntimeException for config: ' . json_encode($bad));
+    }
+    deleteDir(tmpDir());
+});
+
+t('nested path mapping + array index + پاکسازی ارقام فارسی', function () {
+    StubHttpProvider::$fixture = [
+        'data' => ['gold' => ['18k' => ['price' => '۸٬۰۰۰٬۰۰۰']], 'mesghal' => '۳۴٬۶۵۴٬۴۰۰'],
+        'items' => [['price' => '88,500,000']],
+        'coins' => ['nim' => '۴۴٬۰۰۰٬۰۰۰'],
+    ];
+    $p = new StubHttpProvider([
+        'id' => 'mapper',
+        'url' => 'https://api.example.invalid/x',
+        'map' => [
+            'gold18' => ['path' => 'data.gold.18k.price'],
+            'mazaneh' => ['path' => 'data.mesghal'],
+            'coins.emami' => ['path' => 'items.0.price'],
+            'coins.nim' => ['path' => 'coins.nim'],
+        ],
+    ]);
+    $d = $p->fetch();
+    assertSame2(8000000, $d['gold18']);
+    assertSame2(34654400, $d['mazaneh']);
+    assertSame2(88500000, $d['coins']['emami']);
+    assertSame2(44000000, $d['coins']['nim']);
+    deleteDir(tmpDir());
+});
+
+t('rial→toman و multiplier', function () {
+    StubHttpProvider::$fixture = ['r' => '80,000,000', 'm' => 400000];
+    $p = new StubHttpProvider([
+        'id' => 'rial',
+        'url' => 'https://api.example.invalid/x',
+        'map' => [
+            'gold18' => ['path' => 'r', 'unit' => 'rial'],
+            'mazaneh' => ['path' => 'm', 'multiplier' => 1000],
+        ],
+    ]);
+    $d = $p->fetch();
+    assertSame2(8000000, $d['gold18']);
+    assertSame2(400000000, $d['mazaneh']);
+    deleteDir(tmpDir());
+});
+
+t('partial merge: دو منبع مکمل → source "a+b" و updated_at_by_field', function () {
+    $dir = tmpDir();
+    $cfg = makeConfig($dir);
+    $p = new PricePipeline($cfg, [
+        new FakeProvider('a', ['gold18' => 8100000.0]),                                   // فقط gold18
+        new FakeProvider('b', ['coins' => ['emami' => 88500000.0, 'nim' => 44000000.0]]), // فقط سکه‌ها
+    ]);
+    $r = $p->run();
+    assertSame2('ok', $r['status']);
+    assertSame2('a+b', $r['published']['source']);
+    assertSame2(8100000, $r['published']['gold18']);
+    assertSame2(88500000, $r['published']['coins']['emami']);
+    assertSame2(44000000, $r['published']['coins']['nim']);
+    assertSame2(0, $r['published']['coins']['bahar']);
+    assertSame2((int)round(8100000 * 4.3318), $r['published']['mazaneh'], 'mazaneh جاافتاده از gold18 محاسبه میشود');
+    assertSame2(1, $r['published']['schema_version']);
+    assertTrue2(isset($r['published']['updated_at_by_field']['gold18']), 'updated_at_by_field additive');
+    assertTrue2(isset($r['published']['updated_at_by_field']['coins.emami']));
+    $state = readJson($cfg['paths']['state']);
+    assertSame2('a', $state['field_source']['gold18']);
+    assertSame2('b', $state['field_source']['coins.emami']);
+    deleteDir($dir);
+});
+
+t('rate-limit skip → استفاده از کش سالم', function () {
+    $dir = tmpDir();
+    $cfg = makeConfig($dir);
+    file_put_contents($cfg['paths']['state'], json_encode([
+        'provider_state' => ['skipped' => ['last_data' => validData(8200000), 'last_data_ts' => time()]],
+    ]));
+    $p = new PricePipeline($cfg, [new SkipProvider()]);
+    $r = $p->run();
+    assertSame2('ok', $r['status']);
+    assertSame2('skipped', $r['published']['source']);
+    assertSame2(8200000, $r['published']['gold18']);
+    deleteDir($dir);
+});
+
+t('daily cap: isDue و دوبرابرشدن فاصله نزدیک سقف', function () {
+    $p = new ConfigurableHttpProvider([
+        'id' => 'capped',
+        'url' => 'https://api.example.invalid/',
+        'daily_cap' => 2,
+        'min_interval_seconds' => 60,
+        'map' => ['gold18' => ['path' => 'a.b']],
+    ]);
+    assertTrue2($p->isDue(['daily' => [date('Ymd') => 1]])['due'] === true, 'زیر سقف → due');
+    assertTrue2($p->isDue(['daily' => [date('Ymd') => 2]])['due'] === false, 'رسیدن به سقف → skip');
+    $d = $p->isDue(['daily' => [date('Ymd') => 1], 'last_call_ts' => time()]);
+    assertTrue2($d['due'] === false, 'نزدیک سقف (فاصله دوبرابر) + فراخوانی لحظهای → skip');
+    deleteDir(tmpDir());
+});
+
+t('diagnose: هیچ secret در خروجی نیست', function () {
+    StubHttpProvider::$fixture = ['gold18' => 8000000];
+    $dir = tmpDir();
+    $p = new PricePipeline(makeConfig($dir), [
+        new StubHttpProvider([
+            'id' => 'secretive',
+            'url' => 'https://api.example.invalid/x',
+            'auth' => ['type' => 'query', 'name' => 'api_key', 'key' => 'SECRETKEY123'],
+            'map' => ['gold18' => ['path' => 'gold18']],
+        ]),
+        new ManualProvider(['path' => $dir . '/nonexistent.json']),
+    ]);
+    $out = json_encode($p->diagnose(), JSON_UNESCAPED_SLASHES);
+    assertTrue2(strpos($out, 'SECRETKEY123') === false, 'diagnose نباید کلید را لو بدهد');
+    assertTrue2(strpos($out, 'parsed_fields') !== false, 'diagnose باید فیلدها را گزارش کند');
+    assertTrue2(strpos($out, 'api.example.invalid') !== false, 'url ماسکشده مجاز است');
+    deleteDir($dir);
+});
+
+t('dry-run: نتیجه برمیگردد ولی هیچ فایلی نمینویسد', function () {
+    $dir = tmpDir();
+    $cfg = makeConfig($dir);
+    $p = new PricePipeline($cfg, [new FakeProvider('good', validData(8000000))]);
+    $p->setDryRun(true);
+    $r = $p->run();
+    assertSame2('ok', $r['status']);
+    assertSame2(false, file_exists($cfg['paths']['publish']), 'dry-run نباید publish کند');
+    assertSame2(false, file_exists($cfg['paths']['last_good']), 'dry-run نباید last_good بنویسد');
+    assertSame2(false, file_exists($cfg['paths']['state']), 'dry-run نباید state بنویسد');
+    deleteDir($dir);
+});
+
+t('ProviderFactory: کلاس ناشناخته → پیام واضح', function () {
+    $threw = false;
+    try {
+        ProviderFactory::create(['class' => 'Nope'], []);
+    } catch (RuntimeException $e) {
+        $threw = true;
+        assertTrue2(strpos($e->getMessage(), 'unknown provider class') !== false);
+    }
+    assertTrue2($threw);
+    $p = ProviderFactory::create(['class' => 'ManualProvider', 'options' => ['path' => 'x']], []);
+    assertTrue2($p instanceof ManualProvider);
+    deleteDir(tmpDir());
+});
+
+// ─── جمعبندی ───
 echo "\n== RESULT: {$GLOBALS['t']['pass']} passed, {$GLOBALS['t']['fail']} failed ==\n";
 foreach ($GLOBALS['t']['failures'] as $f) {
     echo "  FAILED: $f\n";
