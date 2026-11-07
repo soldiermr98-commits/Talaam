@@ -14,7 +14,13 @@ import { PercentInput } from './NumberInputs';
 import { GemIcon, ShareIcon, StarIcon } from './icons';
 import { shareText } from '../lib/share';
 
-export function SettingsSheet({ onClose }: { onClose: () => void }) {
+export function SettingsSheet({
+  onClose,
+  onOpenConverter,
+}: {
+  onClose: () => void;
+  onOpenConverter: () => void;
+}) {
   const { settings, setSettings, isManual, updatedAtText, setManualGold18, refreshPrices, num } = useApp();
 
   return (
@@ -72,6 +78,14 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
             onChange={(v) => setSettings({ secondHandMarginPct: v ?? DEFAULT_SETTINGS.secondHandMarginPct })}
           />
         </div>
+      </div>
+
+      <div className="divider" />
+      <div className="row-group">
+        <span className="label">مبدل واحدها</span>
+        <button type="button" className="chip" onClick={onOpenConverter}>
+          باز کردن
+        </button>
       </div>
 
       <div className="divider" />

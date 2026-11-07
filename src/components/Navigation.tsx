@@ -6,8 +6,8 @@ import { CalculatorIcon, CoinsIcon, DollarIcon, GemIcon } from './icons';
 
 const TOP_TABS: { key: TabKey; label: string }[] = [
   { key: 'new', label: 'طلای نو' },
+  { key: 'second', label: 'آب‌شده' },
   { key: 'coin', label: 'حباب سکه' },
-  { key: 'second', label: 'دست دوم' },
   { key: 'reverse', label: 'درصد حساب' },
 ];
 

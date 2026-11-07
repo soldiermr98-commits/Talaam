@@ -60,6 +60,20 @@ npm run build
 
 خروجی در `dist/` — کل حجم JS حدود ۷۲KB gzip + فونت‌های woff2. service worker پس از اولین بازدید همه‌چیز را کش می‌کند (آفلاین کامل).
 
+## بیلد در گیت‌هاب (بدون Android Studio)
+
+روی هر پوش به `main`، ورک‌فلو `.github/workflows/android.yml` اجرا می‌شود:
+
+1. تب **Actions** در ریپو → اجرای «Build Android APK»
+2. بعد از سبز شدن، از بخش **Artifacts** دانلود کن:
+   - `talam-apk` → شامل `app-debug.apk` (قابل نصب مستقیم روی گوشی) و `app-release-*.apk`
+   - `talam-aab` → فایل AAB برای فروشگاه‌ها
+3. اجرای دستی هم از دکمه **Run workflow** ممکن است.
+
+امضای رلیز (اختیاری): این ۴ secret را در تنظیمات ریپو اضافه کن تا خروجی release با کلید خودت امضا شود:
+`ANDROID_KEYSTORE_BASE64`، `ANDROID_KEYSTORE_PASSWORD`، `ANDROID_KEY_ALIAS`، `ANDROID_KEY_PASSWORD`.
+تا وقتی تنظیم نشوند، release با debug-key امضا می‌شود (برای تست نصب مشکلی ندارد).
+
 ## بیلد APK و AAB با Capacitor
 
 ```bash

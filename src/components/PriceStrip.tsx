@@ -3,10 +3,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../state/AppContext';
 import { formatMoney, parseMoney, toPersianDigits, mapDigits } from '../lib/numbers';
-import { CheckIcon, PencilIcon, ScaleIcon, WifiOffIcon } from './icons';
+import { CheckIcon, PencilIcon, WifiOffIcon } from './icons';
 
-export function PriceStrip({ onOpenConverter }: { onOpenConverter: () => void }) {
-  const { gold18, mazaneh, updatedAtText, updatedAtStale, online, isManual, setManualGold18, settings, everFetched } = useApp();
+export function PriceStrip() {
+  const { gold18, updatedAtText, updatedAtStale, online, isManual, setManualGold18, settings, everFetched } = useApp();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -55,10 +55,7 @@ export function PriceStrip({ onOpenConverter }: { onOpenConverter: () => void })
         )}
         <div className={`strip-sub${updatedAtStale ? ' stale' : ''}`}>
           {gold18 > 0 ? (
-            <>
-              <span>بروزرسانی: {updatedAtText || 'نامشخص'}</span>
-              {mazaneh > 0 ? <span>• مظنه: {formatMoney(mazaneh, settings.digits)}</span> : null}
-            </>
+            <span>بروزرسانی: {updatedAtText || 'نامشخص'}</span>
           ) : (
             <WifiOffIcon size={13} />
           )}
@@ -90,16 +87,13 @@ export function PriceStrip({ onOpenConverter }: { onOpenConverter: () => void })
               />
               <span className="unit-chip">تومان/گرم</span>
             </div>
-            <button type="button" className="chip active" onClick={submit} style={{ minHeight: 52 }}>
+            <button type="button" className="chip active" onClick={submit} style={{ minHeight: 44 }}>
               ذخیره
             </button>
           </div>
         ) : null}
       </div>
       <div className="strip-actions">
-        <button type="button" className="icon-btn" onClick={onOpenConverter} aria-label="مبدل واحدها">
-          <ScaleIcon size={20} />
-        </button>
         <button
           type="button"
           className="icon-btn"

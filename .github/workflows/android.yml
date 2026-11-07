@@ -1,0 +1,81 @@
+# بیلد APK و AAB طلام — بدون نیاز به Android Studio
+# روی هر پوش به main اجرا می‌شود؛ به‌صورت دستی هم از تب Actions قابل اجراست (workflow_dispatch).
+# خروجی‌ها در تب Artifacts همان اجرا: talam-apk (دیباگ + رلیز) و talam-aab.
+#
+# امضای رلیز (اختیاری): اگر این secrets را تنظیم کنی، APK/AAB رلیز به‌جای debug-key با کلید خودت امضا می‌شود:
+#   ANDROID_KEYSTORE_BASE64  →  خروجی `base64 -w0 talam-release.keystore`
+#   ANDROID_KEYSTORE_PASSWORD، ANDROID_KEY_ALIAS، ANDROID_KEY_PASSWORD
+
+name: Build Android APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build web assets
+        run: npm run build
+
+      - name: Sync Capacitor web assets
+        run: npx cap sync android
+
+      - name: Decode signing keystore (اختیاری)
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > android/talam-release.keystore
+          cat > android/keystore.properties <<EOF
+          storeFile=talam-release.keystore
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+
+      - name: Build APK (debug + release) and AAB
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug assembleRelease bundleRelease --no-daemon
+
+      - name: Upload APK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: talam-apk
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/apk/release/*.apk
+
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: talam-aab
+          path: android/app/build/outputs/bundle/release/*.aab

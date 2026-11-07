@@ -6,7 +6,7 @@ import { MAX_WEIGHT_DECIMALS } from '../config';
 import { useApp } from '../state/AppContext';
 
 interface MoneyInputProps {
-  label: string;
+  label?: string;
   hint?: string;
   value: number; // مقدار واقعی (تومان)
   onChange: (value: number | null) => void;
@@ -15,9 +15,12 @@ interface MoneyInputProps {
   autoFocus?: boolean;
   onEnter?: () => void;
   icon?: React.ReactNode;
+  bare?: boolean; // بدون label-row (برچسب بیرون کارت فراهم می‌شود)
+  unitLabel?: string;
+  onUnitClick?: () => void;
 }
 
-export function MoneyInput({ label, hint, value, onChange, placeholder, showWords = true, autoFocus, onEnter, icon }: MoneyInputProps) {
+export function MoneyInput({ label, hint, value, onChange, placeholder, showWords = true, autoFocus, onEnter, icon, bare, unitLabel = 'تومان', onUnitClick }: MoneyInputProps) {
   const { settings } = useApp();
   const [text, setText] = useState<string>(() => formatDisplay(value, settings.digits));
   const focusedRef = useRef(false);
@@ -41,13 +44,15 @@ export function MoneyInput({ label, hint, value, onChange, placeholder, showWord
 
   return (
     <div className="input-block">
-      <div className="label-row">
-        <span className="label">
-          {icon ? <span className="label-icon">{icon}</span> : null}
-          {label}
-        </span>
-        {hint ? <span className="hint">{hint}</span> : null}
-      </div>
+      {!bare ? (
+        <div className="label-row">
+          <span className="label">
+            {icon ? <span className="label-icon">{icon}</span> : null}
+            {label}
+          </span>
+          {hint ? <span className="hint">{hint}</span> : null}
+        </div>
+      ) : null}
       <div className="field">
         <input
           type="text"
@@ -66,11 +71,17 @@ export function MoneyInput({ label, hint, value, onChange, placeholder, showWord
             onEnter?.();
           }}
           autoFocus={autoFocus}
-          aria-label={label}
+          aria-label={label ?? 'مبلغ'}
         />
-        <span className="unit-chip">تومان</span>
+        {onUnitClick ? (
+          <button type="button" className="unit-chip as-btn" onClick={onUnitClick} title="تغییر حالت">
+            {unitLabel}
+          </button>
+        ) : (
+          <span className="unit-chip">{unitLabel}</span>
+        )}
       </div>
-      {showWords && words ? <div className="words">«{words}»</div> : null}
+      {!bare && showWords && words ? <div className="words">«{words}»</div> : null}
     </div>
   );
 }
@@ -140,11 +151,17 @@ export function PercentInput({
   value,
   onChange,
   hint,
+  bare,
+  unitLabel = '٪',
+  onUnitClick,
 }: {
-  label: string;
+  label?: string;
   value: number;
   onChange: (v: number | null) => void;
   hint?: string;
+  bare?: boolean;
+  unitLabel?: string;
+  onUnitClick?: () => void;
 }) {
   const { settings } = useApp();
   const [text, setText] = useState<string>(() => (value > 0 ? mapDigits(String(value), settings.digits) : ''));
@@ -164,10 +181,12 @@ export function PercentInput({
 
   return (
     <div className="input-block">
-      <div className="label-row">
-        <span className="label">{label}</span>
-        {hint ? <span className="hint">{hint}</span> : null}
-      </div>
+      {!bare ? (
+        <div className="label-row">
+          <span className="label">{label}</span>
+          {hint ? <span className="hint">{hint}</span> : null}
+        </div>
+      ) : null}
       <div className="field">
         <input
           type="text"
@@ -181,9 +200,15 @@ export function PercentInput({
             const n = parseDecimal(text);
             setText(n != null && n > 0 ? mapDigits(String(n), settings.digits) : '');
           }}
-          aria-label={label}
+          aria-label={label ?? 'درصد'}
         />
-        <span className="unit-chip">٪</span>
+        {onUnitClick ? (
+          <button type="button" className="unit-chip as-btn" onClick={onUnitClick} title="تغییر حالت">
+            {unitLabel}
+          </button>
+        ) : (
+          <span className="unit-chip">{unitLabel}</span>
+        )}
       </div>
     </div>
   );

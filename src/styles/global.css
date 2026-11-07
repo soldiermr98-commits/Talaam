@@ -20,10 +20,12 @@ html[data-theme='dark'] {
   --amber: #f5b04d;
   --border: rgba(212, 168, 67, 0.22);
   --border-soft: rgba(255, 255, 255, 0.08);
-  --nav-bg: rgba(30, 16, 48, 0.92);
-  --radius: 18px;
-  --radius-sm: 13px;
+  --nav-bg: rgba(22, 11, 38, 0.96);
+  --radius: 22px;
+  --radius-sm: 16px;
   --shadow: none;
+  --card-border: rgba(255, 255, 255, 0.04);
+  --row-line: rgba(255, 255, 255, 0.09);
   --rail-bg: rgba(255, 255, 255, 0.055);
   --rail-border: rgba(255, 255, 255, 0.1);
   --thumb-bg: rgba(212, 168, 67, 0.5);
@@ -53,6 +55,8 @@ html[data-theme='light'] {
   --border-soft: rgba(42, 23, 64, 0.1);
   --nav-bg: rgba(250, 246, 238, 0.94);
   --shadow: none;
+  --card-border: rgba(42, 23, 64, 0.08);
+  --row-line: rgba(42, 23, 64, 0.12);
   --rail-bg: rgba(42, 23, 64, 0.05);
   --rail-border: rgba(42, 23, 64, 0.12);
   --thumb-bg: rgba(195, 154, 46, 0.5);
@@ -99,7 +103,12 @@ button {
 .app {
   max-width: 480px;
   margin: 0 auto;
-  padding: 0 16px calc(18px + env(safe-area-inset-bottom));
+  padding: 0 12px calc(18px + env(safe-area-inset-bottom));
+}
+
+/* کارت‌ها کمی عمیق‌تر از نوار بالا تورفتگی دارند — مطابق طرح */
+.content {
+  padding-inline: 12px;
 }
 
 .app-main {
@@ -126,14 +135,20 @@ button {
 }
 
 .logo-chip {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
   background: var(--gold-soft);
   border: 1px solid var(--gold);
   color: var(--gold-strong);
   display: grid;
   place-items: center;
+}
+
+.logo-letter {
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1;
 }
 
 .icon-btn {
@@ -169,7 +184,7 @@ button {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--green);
+  background: var(--gold-strong);
   flex: 0 0 auto;
 }
 
@@ -180,9 +195,9 @@ button {
 /* ───────── کارت ───────── */
 .card {
   background: var(--card);
-  border: 1px solid var(--border-soft);
+  border: 1px solid var(--card-border);
   border-radius: var(--radius);
-  padding: 14px 16px;
+  padding: 16px 18px;
 }
 
 .card + .card {
@@ -211,11 +226,11 @@ button {
 }
 
 .strip-icon {
-  width: 42px;
-  height: 42px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
   background: var(--gold-soft);
-  border: 1px solid var(--gold);
+  border: 1.5px solid var(--gold);
   color: var(--gold-strong);
   display: grid;
   place-items: center;
@@ -228,7 +243,7 @@ button {
 }
 
 .strip-line1 {
-  font-size: 14px;
+  font-size: 13.5px;
   color: var(--text-soft);
   display: flex;
   align-items: baseline;
@@ -237,7 +252,7 @@ button {
 }
 
 .strip-price {
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 800;
   color: var(--gold-strong);
 }
@@ -328,10 +343,10 @@ button {
   background: var(--field);
   border: 1px solid var(--field-border);
   border-radius: var(--radius-sm);
-  min-height: 56px;
+  min-height: 62px;
   display: flex;
   align-items: center;
-  padding: 0 14px;
+  padding: 0 16px;
   gap: 8px;
   transition: border-color 0.15s ease;
 }
@@ -349,7 +364,7 @@ button {
   outline: none;
   color: var(--text);
   font-family: inherit;
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 700;
   text-align: right;
   padding: 0;
@@ -367,9 +382,17 @@ button {
   color: var(--text-soft);
   border-radius: 9px;
   padding: 4px 10px;
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 700;
   flex: 0 0 auto;
+  font-family: inherit;
+}
+
+.unit-chip.as-btn {
+  cursor: pointer;
+  border-style: dashed;
+  border-color: var(--border);
+  color: var(--gold-strong);
 }
 
 .words {
@@ -387,14 +410,14 @@ button {
 }
 
 .chip {
-  min-height: 42px;
-  padding: 0 15px;
-  border-radius: 999px;
-  border: 1px solid var(--border-soft);
-  background: transparent;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: var(--card-2);
   color: var(--text-soft);
   font-family: inherit;
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 700;
   cursor: pointer;
   display: inline-flex;
@@ -403,9 +426,8 @@ button {
 }
 
 .chip.active {
-  background: var(--gold-soft);
-  border-color: var(--gold);
-  color: var(--gold-strong);
+  background: var(--gold);
+  color: #241300;
 }
 
 .chip-low,
@@ -527,9 +549,9 @@ button {
 /* ───────── کارت نتیجه ───────── */
 .result-card {
   background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  padding: 16px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  padding: 18px 16px;
   margin-top: 12px;
 }
 
@@ -541,7 +563,7 @@ button {
 }
 
 .result-title {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
   color: var(--text);
   display: inline-flex;
@@ -550,25 +572,77 @@ button {
 }
 
 .result-amount {
-  font-size: 36px;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  font-size: 38px;
   font-weight: 800;
   color: var(--gold-strong);
-  line-height: 1.35;
+  line-height: 1.3;
   letter-spacing: -0.5px;
   word-break: keep-all;
+  margin-top: 8px;
+}
+
+.result-amount.stacked {
+  flex-direction: column;
+  align-items: center;
 }
 
 .result-amount .amount-unit {
   font-size: 14px;
-  font-weight: 500;
-  color: var(--text-soft);
+  font-weight: 600;
+  color: var(--gold-strong);
+  opacity: 0.85;
   margin-inline-start: 6px;
+}
+
+.result-amount.stacked .amount-unit {
+  margin-inline-start: 0;
+  margin-top: 2px;
 }
 
 .words-line {
   font-size: 11.5px;
   color: var(--text-muted);
   margin-top: 2px;
+  text-align: center;
+}
+
+/* کارت باریک «معادل» — مطابق طرح، بین ورودی‌ها و نتیجه */
+.words-card {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  padding: 15px 16px;
+  margin-top: 12px;
+  color: var(--text-muted);
+}
+
+.words-card .t {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* کارت قانون مالیات — عنوان بالا، کلید پایین */
+.tax-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tax-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text);
 }
 
 .details-toggle {
@@ -587,7 +661,7 @@ button {
 }
 
 .detail-rows {
-  margin-top: 4px;
+  margin-top: 8px;
 }
 
 .detail-row {
@@ -595,10 +669,26 @@ button {
   justify-content: space-between;
   align-items: baseline;
   gap: 10px;
-  padding: 9px 0;
-  border-top: 1px dashed var(--border-soft);
+  padding: 11px 0;
+  border-top: 1px dashed var(--row-line);
   font-size: 13px;
   color: var(--text-soft);
+}
+
+.detail-row > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.detail-row > div:first-child::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--gold);
+  flex: 0 0 auto;
 }
 
 .detail-row:first-child {
@@ -615,12 +705,13 @@ button {
   font-size: 11px;
   color: var(--text-muted);
   margin-top: 2px;
+  width: 100%;
 }
 
 /* ───────── دکمه‌ها ───────── */
 .btn {
-  min-height: 52px;
-  border-radius: 15px;
+  min-height: 54px;
+  border-radius: 999px;
   border: none;
   font-family: inherit;
   font-size: 15px;
@@ -630,7 +721,7 @@ button {
   align-items: center;
   justify-content: center;
   gap: 9px;
-  padding: 0 18px;
+  padding: 0 20px;
   transition: filter 0.15s ease, transform 0.05s ease;
 }
 
@@ -715,39 +806,36 @@ button {
 
 /* ───────── تب‌ها و نوار پایین ───────── */
 .tabbar {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding: 2px 0 10px;
-  scrollbar-width: none;
-  margin-top: 2px;
-}
-
-.tabbar::-webkit-scrollbar {
-  display: none;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  background: var(--field);
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  padding: 5px;
+  margin: 4px 0 12px;
 }
 
 .tab-pill {
-  flex: 0 0 auto;
-  min-height: 44px;
-  padding: 0 18px;
+  min-height: 42px;
   border-radius: 999px;
   background: transparent;
-  border: 1px solid var(--border-soft);
+  border: none;
   color: var(--text-soft);
   font-family: inherit;
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 700;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
+  padding: 0 6px;
 }
 
 .tab-pill.active {
   background: var(--gold);
   color: #241300;
-  border-color: var(--gold);
 }
 
 .bottom-nav {
@@ -766,7 +854,7 @@ button {
   max-width: 480px;
   margin: 0 auto;
   display: flex;
-  padding: 6px 8px calc(8px + env(safe-area-inset-bottom));
+  padding: 7px 10px calc(7px + env(safe-area-inset-bottom));
 }
 
 .nav-item {
@@ -774,17 +862,17 @@ button {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   padding: 7px 0 5px;
   background: none;
   border: none;
   color: var(--text-muted);
   font-family: inherit;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 700;
   cursor: pointer;
   border-radius: 12px;
-  min-height: 54px;
+  min-height: 56px;
 }
 
 .nav-item.active {
@@ -834,7 +922,6 @@ button {
   line-height: 2;
   margin-top: 12px;
 }
-
 .empty-state .big {
   color: var(--gold-strong);
   font-weight: 800;

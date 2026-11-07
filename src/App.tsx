@@ -24,25 +24,35 @@ function Shell() {
     <div className="app">
       <div className="app-main">
         <TopBar onSettings={() => setSettingsOpen(true)} />
-        <PriceStrip onOpenConverter={() => setConverterOpen(true)} />
-        <TabBar tab={tab} onChange={setTab} />
+        <div className="content">
+          <PriceStrip />
+          <TabBar tab={tab} onChange={setTab} />
 
-        {tab === 'new' && <NewGoldTab onShareInvoice={() => setInvoiceOpen(true)} />}
-        {tab === 'second' && <SecondHandTab />}
-        {tab === 'coin' && <CoinTab />}
-        {tab === 'reverse' && <ReverseTab />}
+          {tab === 'new' && <NewGoldTab onShareInvoice={() => setInvoiceOpen(true)} />}
+          {tab === 'second' && <SecondHandTab />}
+          {tab === 'coin' && <CoinTab />}
+          {tab === 'reverse' && <ReverseTab />}
 
-        <p className="footer-note">
-          <LockIcon size={13} />
-          محاسبات این اپ بر اساس فرمول استاندارد اتحادیه طلا و جواهر است و جنبه تقریبی دارد.
-        </p>
+          <p className="footer-note">
+            <LockIcon size={13} />
+            محاسبات این اپ مطابق فرمول رسمی اتحادیه طلا و جواهر است و جنبه تقریبی دارد.
+          </p>
+        </div>
       </div>
 
       <BottomNav tab={tab} onChange={setTab} />
       <AdBanner />
       <GlassScrollbar />
 
-      {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && (
+        <SettingsSheet
+          onClose={() => setSettingsOpen(false)}
+          onOpenConverter={() => {
+            setSettingsOpen(false);
+            setConverterOpen(true);
+          }}
+        />
+      )}
       {converterOpen && <ConverterSheet onClose={() => setConverterOpen(false)} />}
       {invoiceOpen && <InvoicePreview onClose={() => setInvoiceOpen(false)} />}
     </div>

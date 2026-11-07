@@ -1,7 +1,7 @@
-// نوار بالا: تنظیمات، لوگو، وضعیت آنلاین
+// نوار بالا: تنظیمات، لوگو، وضعیت آنلاین — مطابق طرح
 
 import { useApp } from '../state/AppContext';
-import { GearIcon, GemIcon, WifiIcon, WifiOffIcon } from './icons';
+import { GearIcon, WifiIcon, WifiOffIcon } from './icons';
 
 export function TopBar({ onSettings }: { onSettings: () => void }) {
   const { online } = useApp();
@@ -12,9 +12,7 @@ export function TopBar({ onSettings }: { onSettings: () => void }) {
       </button>
       <div className="logo">
         <span>طلام</span>
-        <span className="logo-chip">
-          <GemIcon size={18} />
-        </span>
+        <span className="logo-chip logo-letter">ط</span>
       </div>
       <div className={`status-chip${online ? '' : ' off'}`}>
         <span className="dot" />

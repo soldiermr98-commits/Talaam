@@ -1,13 +1,12 @@
-// تب «طلای نو» — وزن، اجرت (درصد یا ثابت)، سود و مالیات → مبلغ نهایی
-
+// تب «طلای نو» — بازطراحی عین طرح: وزن، اجرت (درصد/ثابت)، سود، قانون مالیات، معادل، نتیجه
 
 import { calcNewGold, type MakingMode } from '../../lib/calc';
 import { MAKING_QUICK_CHIPS } from '../../config';
 import { useApp } from '../../state/AppContext';
 import { MoneyInput, PercentInput, WeightInput } from '../../components/NumberInputs';
 import { ResultCard } from '../../components/ResultCard';
-import { Chip, Segmented } from '../../components/ui';
-import { ShareIcon, ScaleIcon } from '../../components/icons';
+import { Chip, Toggle } from '../../components/ui';
+import { PencilIcon, ShareIcon } from '../../components/icons';
 
 export function NewGoldTab({ onShareInvoice }: { onShareInvoice: () => void }) {
   const { inputs, setInput, gold18, settings, fmtMoney, fmtWeight, fmtPercent, words } = useApp();
@@ -18,9 +17,22 @@ export function NewGoldTab({ onShareInvoice }: { onShareInvoice: () => void }) {
   const makingValue =
     typeof st.makingValue === 'number' ? st.makingValue : makingMode === 'percent' ? 14 : 500_000;
   const profitPct = typeof st.profitPct === 'number' ? st.profitPct : settings.profitPct;
-  const taxPct = typeof st.taxPct === 'number' ? st.taxPct : settings.taxPct;
+  const taxPct = settings.taxPct;
 
-  const result = weight && gold18 > 0 ? calcNewGold({ weight, gold18, makingMode, makingPercent: makingMode === 'percent' ? makingValue : undefined, makingFixedPerGram: makingMode === 'fixed' ? makingValue : undefined, profitPct, taxPct }) : null;
+  const toggleUnit = () => setInput('new', 'makingMode', makingMode === 'percent' ? 'fixed' : 'percent');
+
+  const result =
+    weight && gold18 > 0
+      ? calcNewGold({
+          weight,
+          gold18,
+          makingMode,
+          makingPercent: makingMode === 'percent' ? makingValue : undefined,
+          makingFixedPerGram: makingMode === 'fixed' ? makingValue : undefined,
+          profitPct,
+          taxPct,
+        })
+      : null;
 
   return (
     <div>
@@ -36,88 +48,94 @@ export function NewGoldTab({ onShareInvoice }: { onShareInvoice: () => void }) {
 
       <section className="card">
         <div className="label-row">
-          <span className="label">
-            <span className="label-icon"><ScaleIcon size={16} /></span>
-            {makingMode === 'percent' ? 'اجرت ساخت (درصد)' : 'اجرت ساخت (تومان بر گرم)'}
-          </span>
+          <span className="label">{makingMode === 'percent' ? 'اجرت ساخت (درصد)' : 'اجرت ساخت (تومان/گرم)'}</span>
           <span className="hint">کارمزد کارگاه</span>
         </div>
-        <div style={{ marginBottom: 10 }}>
-          <Segmented
-            compact
-            options={[
-              { key: 'percent', label: 'درصد' },
-              { key: 'fixed', label: 'تومان/گرم' },
-            ]}
-            value={makingMode}
-            onChange={(m) => setInput('new', 'makingMode', m)}
-            ariaLabel="حالت اجرت ساخت"
-          />
-        </div>
         {makingMode === 'percent' ? (
-          <>
-            <PercentInput label="مقدار اجرت" value={makingValue} onChange={(v) => setInput('new', 'makingValue', v)} />
-            <div className="chips" style={{ marginTop: 10 }}>
-              <span className="hint" style={{ alignSelf: 'center' }}>پیش‌فرض:</span>
-              {MAKING_QUICK_CHIPS.map((p) => (
-                <Chip key={p} active={makingValue === p} onClick={() => setInput('new', 'makingValue', p)}>
-                  +{fmtPercent(p)}٪
-                </Chip>
-              ))}
-            </div>
-          </>
+          <PercentInput
+            bare
+            value={makingValue}
+            onChange={(v) => setInput('new', 'makingValue', v)}
+            onUnitClick={toggleUnit}
+          />
         ) : (
           <MoneyInput
-            label="اجرت هر گرم"
+            bare
+            unitLabel="تومان/گرم"
             value={makingValue}
             onChange={(v) => setInput('new', 'makingValue', v ?? 0)}
             placeholder="مثلاً ۵۰۰٬۰۰۰"
-            showWords={false}
+            onUnitClick={toggleUnit}
           />
+        )}
+        {makingMode === 'percent' ? (
+          <div className="chips" style={{ marginTop: 12 }}>
+            <span className="hint" style={{ alignSelf: 'center' }}>پیش‌فرض:</span>
+            {MAKING_QUICK_CHIPS.map((p) => (
+              <Chip key={p} active={makingValue === p} onClick={() => setInput('new', 'makingValue', p)}>
+                +{fmtPercent(p)}٪
+              </Chip>
+            ))}
+          </div>
+        ) : (
+          <div className="hint" style={{ marginTop: 10 }}>
+            برای بازگشت به حالت درصدی، روی «تومان/گرم» بزن.
+          </div>
         )}
       </section>
 
-      <section className="card grid-2">
-        <PercentInput label="سود طلافروش" value={profitPct} onChange={(v) => setInput('new', 'profitPct', v)} />
-        <div>
-          <PercentInput label="مالیات بر ارزش افزوده" value={taxPct} onChange={(v) => setInput('new', 'taxPct', v)} />
-          <div className="hint" style={{ marginTop: 6 }}>فقط بر اجرت و سود محاسبه می‌شود</div>
+      <div className="grid-2">
+        <section className="card">
+          <PercentInput label="سود طلافروش" value={profitPct} onChange={(v) => setInput('new', 'profitPct', v)} />
+        </section>
+        <section className="card tax-card">
+          <div className="tax-title">قانون مالیات ({fmtPercent(taxPct)}٪)</div>
+          <div className="toggle-row">
+            <span className="hint">فقط بر اجرت و سود</span>
+            <Toggle on label="مالیات فقط بر اجرت و سود اعمال می‌شود" />
+          </div>
+        </section>
+      </div>
+
+      {result ? (
+        <div className="words-card">
+          <PencilIcon size={14} />
+          <span className="t">معادل: {words(result.total)}</span>
         </div>
-      </section>
+      ) : null}
 
       {result && weight ? (
-        <ResultCard
-          title="قیمت نهایی پرداختی"
-          badge="فاکتور استاندارد"
-          badgeTone="gold"
-          amount={fmtMoney(result.total)}
-          words={words(result.total)}
-          details={[
-            { label: <>ارزش طلای خام ({fmtWeight(weight)} گرم)</>, value: `${fmtMoney(result.raw)} تومان` },
-            {
-              label: 'اجرت ساخت',
-              value: `${fmtMoney(result.making)} تومان`,
-              sub: makingMode === 'percent' ? `${fmtPercent(makingValue)}٪ از ارزش خام` : `${fmtMoney(makingValue)} تومان برای هر گرم`,
-            },
-            { label: 'سود طلافروش', value: `${fmtMoney(result.profit)} تومان`, sub: `${fmtPercent(profitPct)}٪` },
-            { label: 'مالیات بر ارزش افزوده', value: `${fmtMoney(result.tax)} تومان`, sub: `${fmtPercent(taxPct)}٪ فقط از سود و اجرت` },
-          ]}
-        />
+        <>
+          <ResultCard
+            title="قیمت نهایی پرداختی"
+            badge="فاکتور استاندارد تجاری"
+            badgeTone="gold"
+            amount={fmtMoney(result.total)}
+            stacked
+            noCollapse
+            details={[
+              { label: <>ارزش طلای خام ({fmtWeight(weight)} گرم):</>, value: `${fmtMoney(result.raw)} تومان` },
+              {
+                label: makingMode === 'percent' ? <>اجرت ساخت ({fmtPercent(makingValue)}٪):</> : <>اجرت ساخت:</>,
+                value: `${fmtMoney(result.making)} تومان`,
+              },
+              { label: <>سود طلافروشنده ({fmtPercent(profitPct)}٪):</>, value: `${fmtMoney(result.profit)} تومان` },
+              { label: <>مالیات بر ارزش افزوده ({fmtPercent(taxPct)}٪):</>, value: `${fmtMoney(result.tax)} تومان` },
+            ]}
+          />
+          <div className="btn-row">
+            <button type="button" className="btn btn-gold btn-block" onClick={onShareInvoice}>
+              <ShareIcon size={19} />
+              اشتراک‌گذاری فاکتور
+            </button>
+          </div>
+        </>
       ) : (
         <div className="empty-state">
           <div className="big">نرخ و وزن را وارد کن</div>
           {gold18 <= 0 ? 'اول نرخ طلای ۱۸ عیار را از نوار بالا وارد کن.' : 'فقط وزن طلا را وارد کن تا محاسبه انجام شود.'}
         </div>
       )}
-
-      {result ? (
-        <div className="btn-row">
-          <button type="button" className="btn btn-gold btn-block" onClick={onShareInvoice}>
-            <ShareIcon size={19} />
-            اشتراک‌گذاری فاکتور
-          </button>
-        </div>
-      ) : null}
     </div>
   );
 }
