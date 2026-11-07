@@ -32,3 +32,4 @@ tools/
 # فایل‌های موقت CI
  ci-*.json
  ci-log.txt
+ci-last-run.txt
