@@ -108,6 +108,8 @@ return [
 
     // توکن برای اجرای HTTP (وبکرون): fetch_prices.php?token=… — خالی = فقط CLI
     'http_trigger_token' => '',
+    // توکن ویرایشگر اضطراری نرخ از گوشی: admin.php?token=… — خالی = خاموش
+    'admin_token' => '',
 
     'paths' => [
         'last_good' => __DIR__ . '/data/last_good.json',

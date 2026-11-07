@@ -11,7 +11,6 @@ import { ReverseTab } from './screens/tabs/ReverseTab';
 import { SettingsSheet } from './components/SettingsSheet';
 import { ConverterSheet } from './components/ConverterSheet';
 import { InvoicePreview } from './screens/InvoicePreview';
-import { GlassScrollbar } from './components/GlassScrollbar';
 import { LockIcon } from './components/icons';
 
 function Shell() {
@@ -42,7 +41,6 @@ function Shell() {
 
       <BottomNav tab={tab} onChange={setTab} />
       <AdBanner />
-      <GlassScrollbar />
 
       {settingsOpen && (
         <SettingsSheet

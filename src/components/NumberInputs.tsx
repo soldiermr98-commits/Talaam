@@ -11,6 +11,8 @@ function focusEnd(e: ReactFocusEvent<HTMLInputElement>, setFocused?: (v: boolean
   const el = e.currentTarget;
   const len = el.value.length;
   requestAnimationFrame(() => el.setSelectionRange(len, len));
+  // فیلد فوکوسشده همیشه دیده شود (کیبورد موبایل آن را میپوشاند)
+  window.setTimeout(() => el.scrollIntoView({ block: 'center', behavior: 'smooth' }), 350);
 }
 
 interface MoneyInputProps {
