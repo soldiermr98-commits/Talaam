@@ -69,10 +69,17 @@ npm run apk          # APK رلیز (امضاشده بعد از تنظیم signi
 npm run aab          # AAB برای کافه‌بازار/مایکت: android/app/build/outputs/bundle/release/
 ```
 
-> ⚠️ AGP این پروژه به **JDK 17+** نیاز دارد. اگر JAVA_HOME قدیمی است، یا JDK 17/21 نصب کن یا مسیر آن را در `android/gradle.properties` بده:
+> ⚠️ **بیلد اندروید به JDK 21 نیاز دارد** (پلاگین‌های Capacitor 8 با toolchain 21 کامپایل می‌شوند).
+> اگر JAVA_HOME قدیمی است، یا JDK 21 نصب کن یا مسیرش را در `android/gradle.properties` بده:
 >
 > ```properties
-> org.gradle.java.home=C:\\Program Files\\Java\\jdk-17
+> org.gradle.java.home=C:\\Program Files\\Java\\jdk-21
+> ```
+>
+> همچنین مسیر Android SDK باید در `android/local.properties` باشد:
+>
+> ```properties
+> sdk.dir=C:/Users/<user>/AppData/Local/Android/Sdk
 > ```
 
 اندروید استودیو می‌تواند جایگزین کل این مسیر باشد: `npm run cap:open` و بعد Build از خود IDE.
@@ -164,4 +171,4 @@ android/         # پروژه Capacitor
 5. **جداکننده اعشار**: ویرگول `,` به‌عنوان جداکننده هزارگان تفسیر می‌شود (نه اعشار)؛ اعشار فقط `.` و `٫`.
 6. **ذخیره در گالری**: در v1 از شیت اشتراک‌گذاری اندروید استفاده می‌شود (کاربر همان‌جا ذخیره در گالری را دارد). نوشتن مستقیم در MediaStore نیازمند پلااگین نیتیو اضافه است.
 7. **آنس جهانی/دلار آزاد**: طبق spec نمایش داده نمی‌شود؛ schema نرخ‌ها فقط گرم ۱۸، مظنه و سکه‌هاست.
-8. **JDK**: بیلد اندروید به JDK 17+ نیاز دارد (روی این سیستم Java 15 بود و خطای مشخص AGP داده شد؛ مسیر حل در README هست).
+8. **JDK**: بیلد اندروید به JDK 21 نیاز دارد (روی این سیستم Java 15 بود؛ JDK 21 به‌صورت محلی در `tools/` دانلود و بیلد با آن انجام شد — `tools/` در .gitignore است).
