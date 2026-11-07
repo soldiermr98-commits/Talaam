@@ -58,6 +58,8 @@ public_html/Talaam/
 3. نرخ‌ها را بزن → «ذخیره و انتشار فوری»
 4. `https://hojre24shop.ir/Talaam/api/public/prices.json` → نرخ‌های جدید باید دیده شود ✓
 
+**بخش «تنظیمات API» در همان داشبورد**: ویرایش کامل منبع اول (enabled، URL، Query، Headers، auth و کلید، Map، min interval، daily cap) بدون رفتن به هاست؛ دکمه «تست اتصال» وضعیت و فیلدهای پارس‌شده را نشان می‌دهد و «نمایش RAW پاسخ» خروجی خام (ماسک‌شده) را برای تنظیم مسیرهای Map. ذخیره = بازنویسی امن config.php با بکاپ خودکار.
+
 اگر خطای 500 دیدی: PHP version را چک کن و `api/data/` باید قابل نوشتن باشد (File Manager → Permissions → 755).
 
 ## قدم ۴ — cron هر ۵ دقیقه
