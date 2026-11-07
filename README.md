@@ -154,6 +154,16 @@ buildTypes {
 - [ ] سیاست حریم خصوصی (اپ هیچ داده‌ای جمع نمی‌کند و کاملاً آفلاین است)
 - [ ] تبلیغات: `ADS_ENABLED` پیش‌فرض خاموش؛ فقط بنر کوچک پایین، هیچ اینترstitial
 
+## مستندات
+
+- [AUDIT.md](AUDIT.md) — بررسی فنی مستقل، یافته‌ها و اصلاحات
+- [docs/BRIEF.md](docs/BRIEF.md) — بریف محصول
+- [docs/TECH.md](docs/TECH.md) — معماری، فرمول‌ها، اتصال منبع نرخ
+- [docs/MARKETING.md](docs/MARKETING.md) — کیت مارکتینگ و ASO
+- [docs/PRIVACY.md](docs/PRIVACY.md) — سیاست حفظ حریم خصوصی
+- [docs/CHANGELOG.md](docs/CHANGELOG.md) — تغییرات نسخه‌ها
+- [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) — چک‌لیست انتشار
+
 ## ساختار پوشه
 
 ```

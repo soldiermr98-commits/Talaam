@@ -272,13 +272,17 @@ if (existsSync(ANDROID_RES)) {
   );
   console.log('ok adaptive background:', bgHex);
 
-  // اسپلش‌ها — همان ابعاد فایل‌های موجود، آیکون وسط روی پس‌زمینه تیره
+  // اسپلش‌ها — همان ابعاد فایل‌های موجود، تک‌رنگ تیره (کوچک، چند KB)
+  // اندروید ۱۲+ خودش آیکون اپ را روی اسپلش سیستم نشان می‌دهد؛ پیش از ۱۲ یک صفحه تیره ساده دیده می‌شود.
   const resDirs = readdirSync(ANDROID_RES).filter((d) => d.startsWith('drawable'));
+  const solidRow = [];
+  for (let i = 0; i < 16; i++) solidRow.push(...SPLASH_BG, 255); // تصویر 4x4 تک‌رنگ
+  const solid = encodePng(4, 4, Buffer.from(solidRow));
   for (const d of resDirs) {
     const splashPath = join(ANDROID_RES, d, 'splash.png');
     if (!existsSync(splashPath)) continue;
-    const old = decodePng(readFileSync(splashPath));
-    savePng(placeOn(old.width, old.height, master, 0.36, SPLASH_BG), splashPath, `splash-${d}`);
+    writeFileSync(splashPath, solid);
+    console.log(`ok splash-${d} (solid ${SPLASH_BG.map((v) => v.toString(16).padStart(2, '0')).join('')})`);
   }
   console.log('ok android icons + splash');
 } else {

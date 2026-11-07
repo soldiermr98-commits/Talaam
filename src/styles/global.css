@@ -41,7 +41,7 @@ html[data-theme='light'] {
   --field: #f4ecdd;
   --field-border: rgba(42, 23, 64, 0.08);
   --gold: #c39a2e;
-  --gold-strong: #b8891f;
+  --gold-strong: #8a6512; /* متن طلایی روی زمینه روشن — کنتراست ≥ ۴.۵:۱ */
   --gold-soft: rgba(195, 154, 46, 0.12);
   --text: #2a1740;
   --text-soft: #55436f;

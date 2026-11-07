@@ -26,10 +26,19 @@ export function InvoicePreview({ onClose }: { onClose: () => void }) {
   const result = weight && gold18 > 0 ? calcNewGold({ weight, gold18, makingMode, makingPercent: makingMode === 'percent' ? makingValue : undefined, makingFixedPerGram: makingMode === 'fixed' ? makingValue : undefined, profitPct, taxPct }) : null;
 
   const tracking = useMemo(() => `TLM-${Math.floor(1000 + Math.random() * 9000)}`, []);
-  const dateStr = useMemo(
-    () => new Intl.DateTimeFormat('fa-IR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date()),
-    []
-  );
+  // Intl با گزینه dateStyle روی WebView خیلی قدیمی پشتیبانی نمی‌شود — fallback امن
+  const dateStr = useMemo(() => {
+    const now = new Date();
+    try {
+      return new Intl.DateTimeFormat('fa-IR', { dateStyle: 'medium', timeStyle: 'short' }).format(now);
+    } catch {
+      try {
+        return now.toLocaleString('fa-IR');
+      } catch {
+        return now.toISOString().slice(0, 16).replace('T', ' ');
+      }
+    }
+  }, []);
 
   // اندازه‌گیری نود خروجی برای مقیاس پیش‌نمایش
   useEffect(() => {
