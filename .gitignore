@@ -28,3 +28,7 @@ npm-debug.log*
 
 # local JDK for android build
 tools/
+
+# فایل‌های موقت CI
+ ci-*.json
+ ci-log.txt
