@@ -1,0 +1,9 @@
+# پیکربندی محلی — هرگز کامیت نشود
+config.php
+
+# فایل‌های زمان اجرا
+data/*
+!data/.htaccess
+!data/override.json.example
+public/prices.json
+public/*.tmp.*

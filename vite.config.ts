@@ -16,6 +16,7 @@ function dropMockFromRelease(): Plugin {
 }
 
 export default defineConfig({
+  base: './', // کار در زیرپوشه دامنه (مثلاً hojre24shop.ir/Talaam/)
   plugins: [react(), dropMockFromRelease()],
   build: {
     target: 'es2018',
