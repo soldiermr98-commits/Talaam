@@ -1,4 +1,4 @@
-// نوار بالا: تنظیمات، لوگو، وضعیت آنلاین — مطابق طرح
+// نوار بالا: تنظیمات، لوگو (آیکون برند)، وضعیت آنلاین
 
 import { useApp } from '../state/AppContext';
 import { GearIcon, WifiIcon, WifiOffIcon } from './icons';
@@ -11,8 +11,7 @@ export function TopBar({ onSettings }: { onSettings: () => void }) {
         <GearIcon />
       </button>
       <div className="logo">
-        <span>طلام</span>
-        <span className="logo-chip logo-letter">ط</span>
+        <img src="/icons/icon-192.png" alt="طلام" className="logo-img" draggable={false} />
       </div>
       <div className={`status-chip${online ? '' : ' off'}`}>
         <span className="dot" />

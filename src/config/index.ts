@@ -1,7 +1,7 @@
 // پیکربندی مرکزی اپ — پیش از انتشار مقادیر را بررسی کن
 
 export const APP_VERSION = '1.0.0';
-export const APP_ID = 'ir.talam.app';
+export const APP_ID = 'talam.app';
 
 /**
  * حالت MOCK: تا وقتی endpoint واقعی نرخ‌ها آماده نیست true بماند

@@ -1,4 +1,4 @@
-package ir.talam.app;
+package talam.app;
 
 import com.getcapacitor.BridgeActivity;
 

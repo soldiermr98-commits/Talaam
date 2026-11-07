@@ -1,7 +1,6 @@
 // کارت فاکتور — تم تیره ثابت برای خروجی تصویر ۱۰۸۰ پیکسل
 
-
-import { GemIcon, LockIcon, GearIcon } from './components/icons';
+import { LockIcon, GearIcon } from './components/icons';
 import type { NewGoldResult } from './lib/calc';
 import { formatMoney, formatWeight, formatPercent, mapDigits, moneyToPersianWords, type DigitLocale } from './lib/numbers';
 
@@ -27,9 +26,7 @@ export function InvoiceCard({ data }: { data: InvoiceData }) {
   const { weight, gold18, isManual, makingMode, makingValue, profitPct, taxPct, result, dateStr, tracking, digits } = data;
   return (
     <div className="inv">
-      <div className="inv-logo">
-        <GemIcon size={44} strokeWidth={1.5} />
-      </div>
+      <img src="/icons/icon-192.png" alt="طلام" className="inv-logo-img" draggable={false} />
       <div className="inv-title">پیش‌فاکتور محاسبه طلا</div>
       <div className="inv-date">{dateStr}</div>
 
@@ -95,7 +92,7 @@ export function InvoiceCard({ data }: { data: InvoiceData }) {
         </span>
         محاسبه شده توسط اپلیکیشن طلام
       </div>
-      <div className="inv-note">محاسبه تقریبی بر اساس فرمول استاندارد اتحادیه طلا و جواهر</div>
+      <div className="inv-note">محاسبه تقریبی، ملاک نرخ طلافروشی است.</div>
 
       <div className="inv-footer">
         <LockIcon size={18} />
