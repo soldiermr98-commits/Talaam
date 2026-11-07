@@ -4,13 +4,15 @@ export const APP_VERSION = '1.0.0';
 export const APP_ID = 'talam.app';
 
 /**
- * حالت MOCK: تا وقتی endpoint واقعی نرخ‌ها آماده نیست true بماند
- * و اپ از فایل محلی prices.mock.json استفاده می‌کند.
- * برای انتشار واقعی: MOCK_MODE=false و PRICES_URL را به آدرس endpoint خودت تغییر بده
- * (نمونه‌ی سرور در پوشه server/).
+ * Mock فقط برای `npm run dev` است. بیلد تولیدی (release) هرگز از mock استفاده نمی‌کند:
+ * اگر کش و شبکه هم نباشد، اپ حالت «نرخ را دستی وارد کن» را نشان می‌دهد.
  */
-export const MOCK_MODE = true;
-export const PRICES_URL = '/prices.mock.json';
+export const MOCK_MODE: boolean = import.meta.env.DEV === true;
+
+/** آدرس فایل نرخ — برای endpoint واقعی یا همین‌جا ثابت بده یا متغیر محیطی VITE_PRICES_URL */
+const ENV_PRICES_URL = (import.meta.env.VITE_PRICES_URL as string | undefined) ?? '';
+export const PRICES_URL: string =
+  ENV_PRICES_URL !== '' ? ENV_PRICES_URL : MOCK_MODE ? '/prices.mock.json' : '/prices.json';
 
 export const FETCH_TIMEOUT_MS = 5_000; // تایم‌اوت دریافت نرخ‌ها
 export const STALE_WARNING_MS = 6 * 60 * 60 * 1000; // بعد از ۶ ساعت نرخ «قدیمی» تلقی می‌شود
@@ -52,6 +54,15 @@ export const COIN_SPECS = {
 
 /** حداکثر رقم اعشار وزن */
 export const MAX_WEIGHT_DECIMALS = 3;
+
+/** مرزهای منطقی نرخ (تومان) — مقادیر خارج از این بازه از منبع رد می‌شوند */
+export const PRICE_PLAUSIBILITY = {
+  gold18Min: 100_000, // زیر ۱۰۰ هزار تومان برای گرم ۱۸ عیار قطعاً غلط است
+  gold18Max: 2_000_000_000,
+  mazanehRatioMin: 2, // نسبت mazaneh/gold18 معمولاً ≈ 4.33
+  mazanehRatioMax: 10,
+  coinMaxGold18Ratio: 100, // هر سکه حداکثر ۱۰۰ برابر نرخ گرم ۱۸
+};
 
 // ───────── تبلیغات (پیش‌فرض خاموش) ─────────
 export const ADS_ENABLED = false;

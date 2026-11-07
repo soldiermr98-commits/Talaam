@@ -10,6 +10,10 @@
 - **مبدل واحدها**: گرم، سوت، مثقال صرافی، مثقال شرعی، نخود
 - آفلاین کامل بعد از اولین اجرا، ارقام فارسی/انگلیسی، تم تیره/روشن/سیستمی، فونت وزیرمتن باندل‌شده
 
+## سرور نرخ‌ها
+
+خط تولید PHP + cron در `server/` (تست‌شده با ۱۵ تست) — راهنمای کامل استقرار و جدول تصمیم منبع: [server/README_SERVER.md](server/README_SERVER.md)
+
 ## فناوری‌ها
 
 Vite + React 18 + TypeScript + CSS Variables (بدون Tailwind)، PWA (service worker دستی)، Capacitor 8 برای اندروید (minSdk 24)، ذخیره‌سازی Capacitor Preferences + localStorage، Vitest برای تست.

@@ -135,16 +135,30 @@ bubble = market − intrinsic ;  bubble% = bubble/intrinsic × 100
 | `ADS_ENABLED` / `AD_PROVIDER` / `AD_BANNER_ID` | false / tapsell / TODO | خط‌های 56-58 |
 | `BAZAAR_RATE_URL` / `MYKET_APP_URL` | از APP_ID ساخته می‌شود | خط‌های 62-64 |
 
-## ۷) اتصال منبع واقعی نرخ — قدم‌به‌قدم
+## ۷) خط تولید نرخ سمت سرور (PHP + cron) — پیاده‌سازی کامل
 
-1. **منبع را انتخاب کن** (بخش ۹) و شرایط استفاده‌اش را بخوان.
-2. **Cloudflare Worker**: فایل `server/cloudflare-worker.js` را در یک Worker بگذار؛ در تابع `getPrices` جای `TODO` فetch از منبع را پیاده کن و به schema بالا map کن؛ اگر namespace KV داری به نام `PRICES` بایند کن (کش ۵ دقیقه‌ای خودکار).
-3. **deploy**: `npx wrangler deploy` → آدرس مثل `https://…workers.dev/prices.json`.
-4. **یا PHP**: `server/prices.php` را روی هاست بگذار؛ همان TODO را با cURL به منبع پر کن؛ cron هر ۵ دقیقه فایل static بسازد و PHP فقط همان را سرو کند (کمترین بار).
-5. **اپ**: `src/config/index.ts` → `MOCK_MODE=false`، `PRICES_URL='https://…/prices.json'`.
-6. **CORS/HTTPS**: Worker خودش `access-control-allow-origin:*` می‌دهد؛ PHP هم header دارد. https اجباری است (اپ روی WebView https است و fetch به http ممکن است مسدود شود).
-7. **پایش و خرابی**: در Worker خطا را log کن؛ اگر منبع down بود آخرین KV را برگردان؛ در اپ هر شکست بی‌صدا به کش برمی‌گردد (همین الان این‌طور است).
-8. **sanity checks پیشنهادی** (فعلاً در Worker پیاده نشده — TODO): رد نرخ با پرش >X٪ (پیشنهاد ۱۵-۲۰٪) نسبت به آخرین مقدار، کف/سقف منطقی، timestamp منبع.
+هدف: هر ~۵ دقیقه یک فایل استاتیک `prices.json` از منبع(های) نرخ ساخته و منتشر شود؛ اپ فقط همین فایل را می‌خواند و هرگز مستقیم به API ثالث وصل نمی‌شود.
+
+```
+منبع ۱ (API) ─┐
+منبع ۲ (API) ─┼─► providers/*.php ─► validate+sanity ─► jump-guard ─► atomic write ─► public/prices.json
+override دستی ┘   (تومان، نرمال)     (schema/بازه/        (≤۵٪ یا تأیید با    (temp+rename)          ▲
+                                      ترتیب/نسبت مظنه)     منبع دوم یا N اجر)                    همه شکست؟
+                                                                                                 stale=true ┘
+اپ (Capacitor/PWA) ── fetch (۵s timeout) ──► https://…/server/public/prices.json ──► کش محلی ──► UI
+```
+
+- **کد**: `server/fetch_prices.php` (ورود CLI + وب‌کرون با توکن timing-safe)، `server/src/PricePipeline.php`، `server/providers/*`، پیکربندی `server/config.example.php` → `config.php` (git-ignored)
+- **استقرار، تست از گوشی، چرخش کلید، عیب‌یابی و جدول PROVIDER DECISION**: `server/README_SERVER.md`
+- **تست‌ها**: `php server/tests/run_tests.php` → ۱۵ تست واقعاً اجرا شده (آپدیت نرمال، fallback بعد از timeout، مقادیر نامعتبر، خطای ۱۰x ریال، پرش ۲۰٪ رد→پذیرش پس از ۳ اجر متوالی، تأیید منبع دوم، همه‌خراب=stale با updated_at اصلی، بدون last_good=error بدون فایل جعلی، نوشتن اتمیک، lock، override دستی و انقضا، نسبت مظنه، ترتیب سکه‌ها، هشدار، استاب‌های unverified)
+- **schema نهایی**: فیلدهای `source` و `stale` اضافه شد — اپ `stale=true` را می‌فهمد و «نرخ قدیمی است» را کنار «بروزرسانی X دقیقه پیش» نشان می‌دهد (`src/components/PriceStrip.tsx`)
+- **امنیت**: secrets فقط در config.php (git-ignored)؛ `data/` از وب مسدود؛ توکن وب‌کرون با `hash_equals`؛ استاب‌ها بدون کلید RuntimeException می‌دهند — هیچ داده جعلی
+
+### تفاوت mock و release در اپ
+
+- `MOCK_MODE = import.meta.env.DEV` — **بیلد release هرگز mock نمی‌گیرد** (`src/config/index.ts:8-15`)؛ `PRICES_URL` در release پیش‌فرض `/prices.json` و با `VITE_PRICES_URL` قابل تغییر است
+- فایل `prices.mock.json` با پلااگین vite از `dist/` حذف می‌شود (اثبات: grep باندل → صفر ارجاع به mock)
+- release بدون کش/شبکه → حالت «نرخ را دستی وارد کن» — اثبات واقعی روی preview: پاک‌سازی کامل storage → `hasMadeUpPrice:false` و `editorOpen:true`
 
 ## ۸) بیلد و انتشار
 
@@ -158,7 +172,7 @@ npm run apk:debug      # APK دیباگ (تست نصب)
 npm run apk            # APK رلیز امضاشده (نیاز به keystore.properties)
 npm run aab            # AAB برای پنل مارکت‌ها
 node scripts/prepare-brand-icons.mjs   # بازسازی آیکون/اسپلش از assets/brand/icon-master.png
-
+```
 
 - **JDK 21** لازم است (`org.gradle.java.home` یا JAVA_HOME). Android SDK در `android/local.properties`.
 - **CI**: هر پوش به main → `.github/workflows/android.yml` → آرتیفکت `talam-apk` و `talam-aab`.
@@ -166,16 +180,16 @@ node scripts/prepare-brand-icons.mjs   # بازسازی آیکون/اسپلش ا
 - **versioning**: `versionCode` باید هر انتشار +1 شود؛ `versionName` سمانتیک مثل 1.0.1.
 - **PWA**: `dist/` را روی هر هاست static بگذار؛ SW همه‌چیز را کش می‌کند. ⚠️ با هر تغییر محتوایی که SW هم لود می‌کند، `CACHE` در `public/sw.js` را بامپ کن (`talam-v1` → `v2`).
 
-## ۹) استراتژی منبع نرخ — پیشنهاد (موارد خارجی = تأییدنشده)
+## ۹) استراتژی منبع نرخ — جدول تصمیم کامل در `server/README_SERVER.md` (بخش PROVIDER DECISION)
 
-| گزینه | ریسک/هزینه | نظر |
-|---|---|---|
-| سایت‌های تجمیع‌کننده نرخ عمومی (scrapping/API غیررسمی) | شرایط استفاده ممکن است scraping را منع کند — **باید ToS چک شود**؛ پایداری انتخابگرها پایین | سریع‌ترین راه demo؛ برای تولید جای توافق/دسترسی رسمی |
-| APIهای تجاری نرخ طلا (ایرانی/بین‌المللی) | هزینه ماهانه؛ پوشش مظنه/سکه ایرانی را باید تأیید کنی | پایدارترین اگر بودجه باشد |
-| ورودی دستی توسط اپراتور خودت (Worker با متغیر محیطی/ادیتور کوچک) | صفر هزینه؛ اتکای انسانی روزی چند دقیقه | برای هفته‌های اول انتشار کاملاً کافی و واقعاً «offline-first» |
-| ترکیبی (fallback chain) | پیچیدگی متوسط | توصیه نهایی: **دستی/Worker → کش KV → آخرین نرخ خوب در اپ → ورودی دستی**؛ sanity check پرش >۱۵-۲۰٪ قبل از پذیرش نرخ جدید |
+| گزینه | وضعیت |
+|---|---|
+| ManualProvider (override.json روزانه) | **فعال و تست‌شده** — برای شروع توصیه می‌شود (صفر ریسک حقوقی/هزینه) |
+| سرویس‌های API ایرانی (سبک Navasan/BrsApi) | استاب UNVERIFIED — endpoint/شرایط/هزینه باید توسط شما از مستندات رسمی تأیید شود |
+| اسکرپ سایت‌های نرخ | توصیه نمی‌شود (ریسک ToS) |
+| fallback chain نهایی | API → ManualProvider → last_good با stale → ورودی دستی کاربر |
 
-هر آدرس/API مشخصی که اینجا نام نبرده‌ایم عمداً حذف شده تا «تأییدنشده» جعل نشود.
+هر endpoint/قیمتی که اینجا نام نبرده‌ایم عمداً حذف شده تا «تأییدنشده» جعل نشود.
 
 ## ۱۰) تست‌ها و چک‌لیست دستی
 

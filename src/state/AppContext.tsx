@@ -241,7 +241,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     mazaneh,
     coins: prices ? prices.coins : null,
     updatedAt: prices?.updated_at ?? null,
-    updatedAtStale: relative?.stale ?? false,
+    // stale = یا فاصله زمانی از updated_at زیاد است یا سرور خودش پرچم stale فرستاده
+    updatedAtStale: (relative?.stale ?? false) || prices?.stale === true,
     updatedAtText: relative?.text ?? '',
     isManual: manual != null,
     setManualGold18,

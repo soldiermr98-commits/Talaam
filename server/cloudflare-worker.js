@@ -1,15 +1,14 @@
-// نمونه Cloudflare Worker برای سرو کردن فایل نرخ‌ها
-// استقرار: wrangler deploy — و در src/config مقدار PRICES_URL را به این آدرس بده.
+/**
+ * طلام — نمونه ثانویه: Cloudflare Worker برای سرو prices.json
+ *
+ * این فقط مثال جایگزین است؛ هدف اصلی PHP + cron روی هاست ایران است
+ * (کاربران ایران به Worker بدون تحریم‌شکن دسترسی پایدار ندارند — unverified).
+ *
+ * TODO(unverified): منطق دریافت از منبع واقعی را همین‌جا (یا بهتر: در PHP) پیاده کن.
+ * schema خروجی باید با server/README_SERVER.md یکی باشد.
+ */
 
-// TODO: منطق دریافت نرخ واقعی را اینجا پیاده کن. خروجی باید دقیقاً همین schema باشد:
-// {
-//   "updated_at": "2026-01-01T12:00:00+03:30",
-//   "gold18": 0,          // تومان بر گرم ۱۸ عیار
-//   "mazaneh": 0,         // تومان بر مثقال ۱۷ عیار تهران
-//   "coins": { "emami": 0, "bahar": 0, "nim": 0, "rob": 0, "gerami": 0 } // قیمت بازار، تومان
-// }
-
-const CACHE_TTL = 300; // ۵ دقیقه کش
+const CACHE_TTL = 300; // ۵ دقیقه کش KV
 
 export default {
   async fetch(request, env) {
@@ -23,41 +22,33 @@ export default {
       headers: {
         'content-type': 'application/json; charset=utf-8',
         'access-control-allow-origin': '*',
-        'cache-control': `public, max-age=${CACHE_TTL}`,
+        'cache-control': 'public, max-age=60',
       },
     });
   },
 };
 
+/**
+ * اول KV cache؛ اگر نبود منبع واقعی (TODO)؛ اگر آن هم نشد → last good با stale=true.
+ * هرگز داده تازه جعلی نساز.
+ */
 async function getPrices(env) {
-  // کش در KV برای کاهش فشار به منبع (namespace اختیاری: PRICES)
   try {
-    const cached = await env.PRICES?.get('latest');
-    if (cached) return JSON.parse(cached);
+    const cached = await env.PRICES?.get('last_good', 'json');
+    if (cached) {
+      // TODO(unverified): fetch از منبع واقعی + validate + jump-guard (همان قواعد PHP)
+      // تا پیاده‌سازی شود، last good با stale=true سرو می‌شود:
+      return { ...cached, stale: true };
+    }
   } catch {
     /* بدون KV هم کار می‌کند */
   }
-
-  // TODO: جایگزینی با منبع واقعی، مثلاً:
-  // const res = await fetch('https://YOUR-SOURCE/api/gold');
-  // const src = await res.json();
-  // const data = {
-  //   updated_at: new Date().toISOString(),
-  //   gold18: src.gold18, mazaneh: src.mazaneh,
-  //   coins: { emami: src.emami, bahar: src.bahar, nim: src.nim, rob: src.rob, gerami: src.gerami },
-  // };
-
-  const data = {
+  return {
     updated_at: new Date().toISOString(),
+    source: 'none',
+    stale: true,
     gold18: 0,
     mazaneh: 0,
     coins: { emami: 0, bahar: 0, nim: 0, rob: 0, gerami: 0 },
   };
-
-  try {
-    await env.PRICES?.put('latest', JSON.stringify(data), { expirationTtl: CACHE_TTL });
-  } catch {
-    /* نادیده */
-  }
-  return data;
 }

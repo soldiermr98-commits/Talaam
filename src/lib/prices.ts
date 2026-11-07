@@ -1,6 +1,6 @@
 // لایه نرخ‌ها: کش، دریافت با تایم‌اوت ۵ ثانیه، اعتبارسنجی و زمان نسبی
 
-import { FETCH_TIMEOUT_MS, PRICES_URL, STALE_WARNING_MS } from '../config';
+import { FETCH_TIMEOUT_MS, PRICES_URL, PRICE_PLAUSIBILITY, STALE_WARNING_MS } from '../config';
 import { toPersianDigits } from './numbers';
 import { storageGetJSON, storageSetJSON } from './storage';
 
@@ -17,6 +17,8 @@ export interface PriceData {
   gold18: number; // تومان بر گرم
   mazaneh: number; // تومان بر مثقال ۱۷ عیار
   coins: CoinPrices; // قیمت بازار سکه‌ها
+  stale?: boolean; // true = سرور نتوانسته تازه‌سازی کند و last good را می‌فرستد
+  source?: string; // شناسه کوتاه منبع (مثلاً 'manual' یا 'navasan')
 }
 
 export const PRICE_KEYS = ['emami', 'bahar', 'nim', 'rob', 'gerami'] as const;
@@ -24,25 +26,42 @@ export const PRICE_KEYS = ['emami', 'bahar', 'nim', 'rob', 'gerami'] as const;
 export const PRICES_STORAGE_KEY = 'prices';
 export const OVERRIDE_STORAGE_KEY = 'priceOverride';
 
-/** اعتبارسنجی و نرمال‌سازی داده نرخ؛ ساختار نامعتبر → null */
+/** اعتبارسنجی و نرمال‌سازی داده نرخ؛ ساختار نامعتبر → null (هرگز NaN از این تابع بیرون نمی‌رود) */
 export function validatePriceData(x: unknown): PriceData | null {
   if (!x || typeof x !== 'object') return null;
   const o = x as Record<string, unknown>;
   const gold18 = Number(o.gold18);
   const mazaneh = Number(o.mazaneh);
-  if (!Number.isFinite(gold18) || gold18 <= 0) return null;
+  // مرزهای منطقی — نرخ خراب از منبع نباید به UI برسد
+  if (!Number.isFinite(gold18) || gold18 < PRICE_PLAUSIBILITY.gold18Min || gold18 > PRICE_PLAUSIBILITY.gold18Max) {
+    return null;
+  }
   const coinsSrc = (o.coins ?? {}) as Record<string, unknown>;
   const coins = {} as CoinPrices;
   for (const k of PRICE_KEYS) {
     const v = Number(coinsSrc[k]);
-    coins[k] = Number.isFinite(v) && v > 0 ? Math.round(v) : 0;
+    // سکه نامعتبر یا غیرمنطقی (بیش از سقف نسبت به گرم ۱۸) → صفر = «دستی وارد کن»
+    coins[k] =
+      Number.isFinite(v) && v > 0 && v <= gold18 * PRICE_PLAUSIBILITY.coinMaxGold18Ratio ? Math.round(v) : 0;
+  }
+  // نسبت مظنه باید نزدیک ۴.۳۳ باشد؛ وگرنه از روی gold18 محاسبه می‌شود
+  let mazanehOut: number;
+  if (Number.isFinite(mazaneh) && mazaneh > 0) {
+    const ratio = mazaneh / gold18;
+    mazanehOut =
+      ratio >= PRICE_PLAUSIBILITY.mazanehRatioMin && ratio <= PRICE_PLAUSIBILITY.mazanehRatioMax
+        ? Math.round(mazaneh)
+        : Math.round(gold18 * 4.3318);
+  } else {
+    mazanehOut = Math.round(gold18 * 4.3318);
   }
   return {
     updated_at: typeof o.updated_at === 'string' ? o.updated_at : new Date().toISOString(),
     gold18: Math.round(gold18),
-    mazaneh:
-      Number.isFinite(mazaneh) && mazaneh > 0 ? Math.round(mazaneh) : Math.round(gold18 * 4.3318),
+    mazaneh: mazanehOut,
     coins,
+    stale: o.stale === true,
+    source: typeof o.source === 'string' && o.source !== '' ? o.source : undefined,
   };
 }
 

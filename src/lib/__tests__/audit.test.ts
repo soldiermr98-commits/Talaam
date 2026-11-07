@@ -84,6 +84,50 @@ describe('audit: fetchPrices در برابر پاسخ خراب', () => {
   });
 });
 
+describe('audit: schema سرور — stale/source و مقادیر غیرمنطقی', () => {
+  it('پرچم stale فقط با true دقیق فعال می‌شود و source حفظ می‌شود', () => {
+    const d = validatePriceData({ gold18: 8_000_000, mazaneh: 34_654_400, stale: true, source: 'manual' });
+    expect(d?.stale).toBe(true);
+    expect(d?.source).toBe('manual');
+    const d2 = validatePriceData({ gold18: 8_000_000, mazaneh: 34_654_400, stale: 'yes', source: 42 });
+    expect(d2?.stale).toBe(false);
+    expect(d2?.source).toBeUndefined();
+  });
+
+  it('فیلدهای اضافه سرور (source/stale) باعث رد شدن نمی‌شوند', () => {
+    const d = validatePriceData({
+      updated_at: '2026-01-01T12:00:00+03:30',
+      source: 'navasan',
+      stale: false,
+      gold18: 8_000_000,
+      mazaneh: 34_654_400,
+      coins: { emami: 88_000_000 },
+    });
+    expect(d?.gold18).toBe(8_000_000);
+    expect(d?.coins.emami).toBe(88_000_000);
+  });
+
+  it('مقادیر غیرمنطقی رد می‌شوند: gold18 زیر مرز، بالای مرز', () => {
+    expect(validatePriceData({ gold18: 500 })).toBeNull(); // زیر ۱۰۰هزار — قطعاً غلط
+    expect(validatePriceData({ gold18: 3_000_000_000 })).toBeNull(); // بالای مرز
+    expect(validatePriceData({ gold18: 8_000_000 })).not.toBeNull();
+  });
+
+  it('سکه غیرمنطقی (بیش از ۱۰۰ برابر گرم ۱۸) → صفر، نه نمایش عدد پوچ', () => {
+    const d = validatePriceData({ gold18: 8_000_000, mazaneh: 0, coins: { emami: 9_000_000_000, nim: 44_000_000 } });
+    expect(d?.coins.emami).toBe(0);
+    expect(d?.coins.nim).toBe(44_000_000);
+  });
+
+  it('نسبت مظنه خارج از ۲ تا ۱۰ → از gold18 محاسبه می‌شود (خطای ۱۰x گم نمی‌شود)', () => {
+    // ۱۰x خطای ریال: مظنه درست ۳۴٬۶۵۴٬۴۰۰ است؛ ۱۰ برابرش نسبت ۴۳ می‌دهد
+    const d = validatePriceData({ gold18: 8_000_000, mazaneh: 346_544_000 });
+    expect(d?.mazaneh).toBe(Math.round(8_000_000 * 4.3318));
+    const d2 = validatePriceData({ gold18: 8_000_000, mazaneh: 34_654_400 }); // نسبت ≈4.33
+    expect(d2?.mazaneh).toBe(34_654_400);
+  });
+});
+
 describe('audit: حروف فارسی — موارد ظریف', () => {
   it('۱۰۰۰۰۰۰ → «یک میلیون»', () => {
     expect(numberToPersianWords(1_000_000)).toBe('یک میلیون');

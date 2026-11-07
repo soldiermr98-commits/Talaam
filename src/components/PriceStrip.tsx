@@ -55,7 +55,10 @@ export function PriceStrip() {
         )}
         <div className={`strip-sub${updatedAtStale ? ' stale' : ''}`}>
           {gold18 > 0 ? (
-            <span>بروزرسانی: {updatedAtText || 'نامشخص'}</span>
+            <>
+              <span>بروزرسانی: {updatedAtText || 'نامشخص'}</span>
+              {updatedAtStale ? <span>• نرخ قدیمی است</span> : null}
+            </>
           ) : (
             <WifiOffIcon size={13} />
           )}
