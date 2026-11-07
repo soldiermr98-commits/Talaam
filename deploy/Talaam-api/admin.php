@@ -25,16 +25,17 @@ require $serverDir . '/providers/TemplateProvider.php';
 require $serverDir . '/providers/NavasanStyleProvider.php';
 require $serverDir . '/providers/BrsapiStyleProvider.php';
 require $serverDir . '/providers/ManualProvider.php';
+require $serverDir . '/src/DefaultConfig.php';
 require $serverDir . '/src/ProviderFactory.php';
 require $serverDir . '/src/PricePipeline.php';
 
 $configFile = $serverDir . '/config.php';
-if (!file_exists($configFile)) {
-    http_response_code(500);
-    exit('server not configured — config.php missing');
+if (file_exists($configFile)) {
+    /** @var array<string,mixed> $config */
+    $config = require $configFile;
+} else {
+    $config = DefaultConfig::get($serverDir);
 }
-/** @var array<string,mixed> $config */
-$config = require $configFile;
 
 $adminToken = (string)($config['admin_token'] ?? '');
 $given = (string)($_REQUEST['token'] ?? '');
@@ -288,6 +289,8 @@ $esc = static fn ($v) => htmlspecialchars((string)($v ?? ''), ENT_QUOTES, 'UTF-8
   .chk { display: flex; align-items: center; gap: 8px; font-size: 13px; }
   .chk input { width: auto; }
   .mini { font-size: 11px; color: #8d7fa8; margin: 4px 0 0; text-align: right; }
+  .adv { margin-top: 12px; }
+  .adv summary { cursor: pointer; color: #E8C97D; font-size: 13px; padding: 8px 0; user-select: none; }
 </style>
 </head>
 <body>
@@ -333,35 +336,40 @@ $esc = static fn ($v) => htmlspecialchars((string)($v ?? ''), ENT_QUOTES, 'UTF-8
         <input type="checkbox" name="api_enabled" id="api_enabled" <?= !empty($api['enabled']) ? 'checked' : '' ?> />
         <label for="api_enabled" style="margin:0">منبع فعال باشد</label>
       </div>
-      <label style="margin-top:12px">URL</label>
+      <label style="margin-top:12px">آدرس API</label>
       <input name="api_url" dir="ltr" value="<?= $esc($api['url'] ?? '') ?>" />
-      <label style="margin-top:12px">Query (JSON)</label>
-      <textarea name="api_query" dir="ltr"><?= $esc(json_encode($api['query'] ?? new stdClass(), JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT)) ?></textarea>
-      <label style="margin-top:12px">Headers (JSON)</label>
-      <textarea name="api_headers" dir="ltr"><?= $esc(json_encode($api['headers'] ?? new stdClass(), JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT)) ?></textarea>
-      <div class="row" style="margin-top:12px">
-        <div>
-          <label>Auth type</label>
-          <select name="api_auth_type">
-            <?php foreach (['' => 'بدون', 'query' => 'Query param', 'header' => 'Header', 'bearer' => 'Bearer'] as $k => $lbl): ?>
-              <option value="<?= $k ?>" <?= strtolower((string)($api['auth']['type'] ?? '')) === $k ? 'selected' : '' ?>><?= $lbl ?></option>
-            <?php endforeach; ?>
-          </select>
-        </div>
-        <div>
-          <label>Auth name</label>
-          <input name="api_auth_name" dir="ltr" value="<?= $esc($api['auth']['name'] ?? 'api_key') ?>" />
-        </div>
-      </div>
-      <label style="margin-top:12px">Auth key — فعلی: <?= $esc($apiKeyMasked ?: '—') ?> (خالی = بدون تغییر)</label>
+      <label style="margin-top:12px">کلید API — فعلی: <?= $esc($apiKeyMasked ?: '—') ?> (خالی = بدون تغییر)</label>
       <input name="api_auth_key" dir="ltr" placeholder="برای تغییر کلید جدید را بگذار" />
-      <label style="margin-top:12px">Map (JSON) — مسیر هر فیلد در پاسخ</label>
-      <textarea name="api_map" dir="ltr" style="min-height:110px"><?= $esc(json_encode($api['map'] ?? new stdClass(), JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT)) ?></textarea>
-      <div class="row" style="margin-top:12px">
-        <div><label>min interval (s)</label><input name="api_min_interval" inputmode="numeric" dir="ltr" value="<?= $esc($api['min_interval_seconds'] ?? 240) ?>" /></div>
-        <div><label>daily cap</label><input name="api_daily_cap" inputmode="numeric" dir="ltr" value="<?= $esc($api['daily_cap'] ?? 0) ?>" /></div>
-      </div>
     </div>
+    <details class="adv">
+      <summary>تنظیمات پیشرفته (auth، پارامترها، مسیر فیلدها)</summary>
+      <div class="card">
+        <label>Query (JSON)</label>
+        <textarea name="api_query" dir="ltr"><?= $esc(json_encode($api['query'] ?? new stdClass(), JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT)) ?></textarea>
+        <label style="margin-top:12px">Headers (JSON)</label>
+        <textarea name="api_headers" dir="ltr"><?= $esc(json_encode($api['headers'] ?? new stdClass(), JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT)) ?></textarea>
+        <div class="row" style="margin-top:12px">
+          <div>
+            <label>Auth type</label>
+            <select name="api_auth_type">
+              <?php foreach (['' => 'بدون', 'query' => 'Query param', 'header' => 'Header', 'bearer' => 'Bearer'] as $k => $lbl): ?>
+                <option value="<?= $k ?>" <?= strtolower((string)($api['auth']['type'] ?? '')) === $k ? 'selected' : '' ?>><?= $lbl ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+          <div>
+            <label>Auth name</label>
+            <input name="api_auth_name" dir="ltr" value="<?= $esc($api['auth']['name'] ?? 'api_key') ?>" />
+          </div>
+        </div>
+        <label style="margin-top:12px">Map (JSON) — مسیر هر فیلد در پاسخ</label>
+        <textarea name="api_map" dir="ltr" style="min-height:110px"><?= $esc(json_encode($api['map'] ?? new stdClass(), JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT)) ?></textarea>
+        <div class="row" style="margin-top:12px">
+          <div><label>min interval (s)</label><input name="api_min_interval" inputmode="numeric" dir="ltr" value="<?= $esc($api['min_interval_seconds'] ?? 240) ?>" /></div>
+          <div><label>daily cap</label><input name="api_daily_cap" inputmode="numeric" dir="ltr" value="<?= $esc($api['daily_cap'] ?? 0) ?>" /></div>
+        </div>
+      </div>
+    </details>
     <div class="row2">
       <button type="submit" name="action" value="test_api" class="ghost">تست اتصال</button>
       <button type="submit" name="action" value="save_api">ذخیره تنظیمات</button>

@@ -23,23 +23,18 @@ require $serverDir . '/providers/TemplateProvider.php';
 require $serverDir . '/providers/NavasanStyleProvider.php';
 require $serverDir . '/providers/BrsapiStyleProvider.php';
 require $serverDir . '/providers/ManualProvider.php';
+require $serverDir . '/src/DefaultConfig.php';
 require $serverDir . '/src/PricePipeline.php';
 require $serverDir . '/src/ProviderFactory.php';
 
-// ─── config (git-ignored) ───
+// ─── config: اختیاری — بدون آن هم با پیشفرض markaznerkh کار میکند ───
 $configFile = $serverDir . '/config.php';
-if (!file_exists($configFile)) {
-    $msg = "config.php not found — copy config.example.php to config.php and fill values\n";
-    if (PHP_SAPI === 'cli') {
-        fwrite(STDERR, $msg);
-    } else {
-        http_response_code(500);
-        echo 'server not configured';
-    }
-    exit(3);
+if (file_exists($configFile)) {
+    /** @var array<string,mixed> $config */
+    $config = require $configFile;
+} else {
+    $config = DefaultConfig::get($serverDir);
 }
-/** @var array<string,mixed> $config */
-$config = require $configFile;
 
 // ─── آرگومان‌های CLI ───
 $dryRun = in_array('--dry-run', $argv ?? [], true);

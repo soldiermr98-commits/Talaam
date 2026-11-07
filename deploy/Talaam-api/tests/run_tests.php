@@ -17,6 +17,7 @@ require $serverDir . '/providers/TemplateProvider.php';
 require $serverDir . '/providers/NavasanStyleProvider.php';
 require $serverDir . '/providers/BrsapiStyleProvider.php';
 require $serverDir . '/providers/ManualProvider.php';
+require $serverDir . '/src/DefaultConfig.php';
 require $serverDir . '/src/ProviderFactory.php';
 require $serverDir . '/src/PricePipeline.php';
 
@@ -611,6 +612,20 @@ t('ProviderFactory: کلاس ناشناخته → پیام واضح', function (
 });
 
 // ─── جمعبندی ───
+t('DefaultConfig: ساختار کامل + ساخت منابع پیشفرض (markaznerkh)', function () {
+    $dir = tmpDir();
+    $cfg = DefaultConfig::get($dir);
+    assertTrue2(isset($cfg['providers'][0]['options']['url']), 'provider url exists');
+    assertTrue2(strpos($cfg['providers'][0]['options']['url'], 'markaznerkh') !== false, 'default provider = markaznerkh');
+    assertTrue2(isset($cfg['providers'][1]) && ($cfg['providers'][1]['class'] ?? '') === 'ManualProvider', 'manual fallback last');
+    assertTrue2($cfg['admin_token'] !== '', 'admin token preset');
+    $providers = ProviderFactory::createAll($cfg);
+    assertSame2(2, count($providers));
+    assertTrue2($providers[0] instanceof ConfigurableHttpProvider);
+    assertTrue2($providers[1] instanceof ManualProvider);
+    deleteDir($dir);
+});
+
 echo "\n== RESULT: {$GLOBALS['t']['pass']} passed, {$GLOBALS['t']['fail']} failed ==\n";
 foreach ($GLOBALS['t']['failures'] as $f) {
     echo "  FAILED: $f\n";
