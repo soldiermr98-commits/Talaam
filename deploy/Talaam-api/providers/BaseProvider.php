@@ -76,7 +76,17 @@ abstract class BaseProvider implements ProviderInterface
             $code = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
             curl_close($ch);
             if ($body === false || $code >= 400) {
-                throw new RuntimeException("HTTP $code $err");
+                $detail = '';
+                if (is_string($body) && $body !== '') {
+                    $jd = json_decode($body, true);
+                    if (is_array($jd)) {
+                        $detail = (string)($jd['detail'] ?? ($jd['error']['message'] ?? ($jd['message'] ?? ($jd['error'] ?? ''))));
+                    }
+                    if ($detail === '') {
+                        $detail = substr(trim(strip_tags($body)), 0, 140);
+                    }
+                }
+                throw new RuntimeException("HTTP $code" . ($err !== '' ? " $err" : '') . ($detail !== '' ? " — $detail" : ''));
             }
             return (string)$body;
         }

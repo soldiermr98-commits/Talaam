@@ -278,11 +278,24 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                 throw new RuntimeException('سرویس مورد نظر یافت نشد');
             }
             $opts = $config['providers'][$idx]['options'] ?? [];
-            $opts['enabled'] = isset($_POST['api_enabled']);
+            $newKeyInput = trim((string)($_POST['api_auth_key'] ?? ''));
+            // اگر کاربر کلید یا دستور curl جدیدی وارد کرده باشد، خودکار این پروایدر را روشن (enabled) کن
+            $opts['enabled'] = isset($_POST['api_enabled']) || $newKeyInput !== '';
             $opts = applyAdvancedFields($opts, $_POST);
-            $opts = applySmartKeyOrCurl($opts, (string)($_POST['api_auth_key'] ?? ''));
+            $opts = applySmartKeyOrCurl($opts, $newKeyInput);
 
-            $inst = new ConfigurableHttpProvider($opts, $config['http'] ?? []);
+            // اگر کاربر کلید جدید زده و مستقیماً دکمه «تست دریافت» را زده، کلیدش را هم ذخیره کن تا از بین نرود
+            if ($newKeyInput !== '' && ($action === 'test_api' || $action === 'test_api_raw')) {
+                $config['providers'][$idx]['options'] = $opts;
+                @copy($configFile, $configFile . '.bak');
+                writeConfigAtomic($configFile, $config);
+                $config = require $configFile;
+            }
+
+            // برای تست دستی در پنل، حتی اگر تیک فعال بودن خاموش باشد اجازه تست بده
+            $testOpts = $opts;
+            $testOpts['enabled'] = true;
+            $inst = new ConfigurableHttpProvider($testOpts, $config['http'] ?? []);
 
             if ($action === 'save_api') {
                 $config['providers'][$idx]['options'] = $opts;
