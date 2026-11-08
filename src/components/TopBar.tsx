@@ -11,7 +11,7 @@ export function TopBar({ onSettings }: { onSettings: () => void }) {
         <GearIcon size={22} />
       </button>
       <div className="logo-center" aria-label="طلام">
-        <img src="icons/icon-192.png" alt="طلام" className="logo-img" draggable={false} />
+        <img src="icons/header-logo.png" alt="طلام" className="logo-img" draggable={false} />
       </div>
       <button
         type="button"

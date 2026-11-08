@@ -7,7 +7,8 @@ import { Sheet } from './ui';
 import { CheckIcon, PencilIcon } from './icons';
 
 export function PriceStrip() {
-  const { gold18, mazaneh, updatedAtStale, online, isManual, setManualGold18, settings } = useApp();
+  const { prices, gold18, mazaneh, updatedAtText, updatedAtStale, online, isManual, setManualGold18, settings } = useApp();
+  const sourceText = !isManual ? (prices?.source_label || prices?.source || '') : '';
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
@@ -47,40 +48,60 @@ export function PriceStrip() {
   return (
     <>
       <section className="ticker-strip" aria-label="نرخ طلای ۱۸ عیار">
-        <button type="button" className="ticker-main-btn" onClick={openEditor} title="ویرایش نرخ طلای ۱۸ عیار">
-          <span className={`ticker-dot${updatedAtStale ? ' stale' : ''}`} />
-          {priceDisplay ? (
-            <>
-              <span className="ticker-label">{isManual ? 'گرم ۱۸ (دستی):' : 'گرم ۱۸ عیار:'}</span>
-              <span className="ticker-val-primary">{priceDisplay}</span>
-              <span className="ticker-unit">ت</span>
-            </>
-          ) : (
-            <span className="ticker-label">
-              {online ? 'نرخ ۱۸ عیار را وارد کن' : 'آفلاین — ورود نرخ دستی'}
-            </span>
-          )}
-        </button>
+        <div className="ticker-col">
+          <div className="ticker-top-row">
+            <button type="button" className="ticker-main-btn" onClick={openEditor} title="ویرایش نرخ طلای ۱۸ عیار">
+              <span className={`ticker-dot${updatedAtStale ? ' stale' : ''}`} />
+              {priceDisplay ? (
+                <>
+                  <span className="ticker-label">گرم ۱۸ عیار:</span>
+                  <span className="ticker-val-primary">{priceDisplay}</span>
+                  <span className="ticker-unit">تومان</span>
+                </>
+              ) : (
+                <span className="ticker-label">
+                  {online ? 'نرخ ۱۸ عیار را وارد کن' : 'آفلاین — ورود نرخ دستی'}
+                </span>
+              )}
+            </button>
 
-        <div className="ticker-side">
-          {isManual ? (
-            <button
-              type="button"
-              className="ticker-reset-btn"
-              onClick={() => setManualGold18(null)}
-              title="بازگشت به نرخ خودکار"
-            >
-              نرخ خودکار
-            </button>
-          ) : mazanehDisplay ? (
-            <button type="button" className="ticker-secondary-btn" onClick={openEditor}>
-              <span className="ticker-label">مظنه:</span>
-              <span className="ticker-val-gold">{mazanehDisplay}</span>
-            </button>
-          ) : null}
-          <button type="button" className="ticker-edit-icon" onClick={openEditor} aria-label="ویرایش نرخ">
-            <PencilIcon size={14} />
-          </button>
+            <div className="ticker-side">
+              {mazanehDisplay ? (
+                <button type="button" className="ticker-secondary-btn" onClick={openEditor}>
+                  <span className="ticker-label">مظنه:</span>
+                  <span className="ticker-val-gold">{mazanehDisplay}</span>
+                </button>
+              ) : null}
+              <button type="button" className="ticker-edit-icon" onClick={openEditor} aria-label="ویرایش نرخ">
+                <PencilIcon size={15} />
+              </button>
+            </div>
+          </div>
+
+          <div className={`ticker-sub-row${updatedAtStale ? ' stale' : ''}`}>
+            {isManual ? (
+              <div className="ticker-manual-bar">
+                <span className="manual-chip">نرخ دستی</span>
+                <button
+                  type="button"
+                  className="link-btn"
+                  style={{ padding: '1px 4px', fontSize: 11.5 }}
+                  onClick={() => setManualGold18(null)}
+                >
+                  بازگشت به نرخ خودکار
+                </button>
+              </div>
+            ) : gold18 > 0 ? (
+              <>
+                <span>بروزرسانی: {updatedAtText || 'همین حالا'}</span>
+                {sourceText ? <span>• {sourceText}</span> : null}
+                {updatedAtStale ? <span className="stale-badge">• نرخ قدیمی است</span> : null}
+                {!online ? <span>• آفلاین</span> : null}
+              </>
+            ) : (
+              <span>برای شروع محاسبه، روی نوار بزن و نرخ دستی وارد کن</span>
+            )}
+          </div>
         </div>
       </section>
 

@@ -26,7 +26,7 @@ export function InvoiceCard({ data }: { data: InvoiceData }) {
   const { weight, gold18, isManual, makingMode, makingValue, profitPct, taxPct, result, dateStr, tracking, digits } = data;
   return (
     <div className="inv">
-      <img src="icons/icon-192.png" alt="طلام" className="inv-logo-img" draggable={false} />
+      <img src="icons/header-logo.png" alt="طلام" className="inv-logo-img" draggable={false} />
       <div className="inv-title">پیش‌فاکتور محاسبه طلا</div>
       <div className="inv-date">{dateStr}</div>
 

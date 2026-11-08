@@ -188,12 +188,44 @@ button {
 /* ───────── نوار تیکر بالای صفحه ───────── */
 .ticker-strip {
   background: var(--card-2);
-  border: 1px solid rgba(212, 168, 67, 0.22);
-  border-radius: 13px;
-  padding: 8px 11px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 9px 12px;
+}
+
+.ticker-col {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+}
+
+.ticker-top-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+}
+
+.ticker-sub-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding-right: 14px;
+}
+
+.ticker-sub-row.stale,
+.stale-badge {
+  color: var(--amber);
+  font-weight: 700;
+}
+
+.ticker-manual-bar {
+  display: flex;
+  align-items: center;
   gap: 8px;
 }
 
@@ -1472,8 +1504,8 @@ button {
 }
 
 .coin-status-badge.level-high {
-  background: rgba(147, 0, 10, 0.42);
-  border: 1px solid rgba(255, 180, 171, 0.3);
+  background: var(--red-soft);
+  border: 1px solid rgba(214, 69, 69, 0.35);
   color: var(--red);
 }
 
@@ -1490,8 +1522,8 @@ button {
 }
 
 .coin-hero-box {
-  background: rgba(35, 21, 53, 0.72);
-  border: 1px solid rgba(212, 168, 67, 0.15);
+  background: var(--field);
+  border: 1px solid var(--border);
   border-radius: 14px;
   padding: 16px 14px;
   margin: 10px 0 12px;
@@ -1501,7 +1533,7 @@ button {
 .coin-hero-label {
   display: block;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text-soft);
   margin-bottom: 4px;
 }
@@ -1544,8 +1576,8 @@ button {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: rgba(50, 35, 68, 0.65);
-  border: 1px solid transparent;
+  background: var(--card-2);
+  border: 1px solid var(--border-soft);
   padding: 10px 14px;
   border-radius: 12px;
   font-family: inherit;
@@ -1559,8 +1591,7 @@ button {
 }
 
 .coin-metric-row.clickable:hover {
-  border-color: rgba(212, 168, 67, 0.3);
-  background: var(--card-2);
+  border-color: var(--gold);
 }
 
 .coin-metric-label {
@@ -1585,8 +1616,9 @@ button {
   align-items: center;
   gap: 3px;
   font-size: 10px;
-  color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-soft);
+  background: var(--card);
+  border: 1px solid var(--border-soft);
   padding: 2px 6px;
   border-radius: 6px;
 }
@@ -1604,7 +1636,7 @@ button {
 }
 
 .coin-metric-val.gold .num {
-  color: #eec058;
+  color: var(--gold-strong);
 }
 
 .coin-metric-val .unit {
@@ -1616,7 +1648,7 @@ button {
 .coin-gauge-wrap {
   margin-top: 14px;
   padding-top: 10px;
-  border-top: 1px solid rgba(78, 70, 54, 0.25);
+  border-top: 1px solid var(--border-soft);
 }
 
 .coin-gauge-legend {
@@ -1662,14 +1694,14 @@ button {
   background: var(--field);
   border-radius: 999px;
   padding: 2px;
-  border: 1px solid rgba(212, 168, 67, 0.22);
+  border: 1px solid var(--border);
   display: flex;
   overflow: hidden;
 }
 
 .coin-gauge-track .seg-gold {
   height: 100%;
-  background: var(--gold-strong);
+  background: var(--gold);
   border-radius: 0 999px 999px 0;
   transition: width 0.4s ease;
 }
@@ -1685,7 +1717,7 @@ button {
   background: var(--card);
   border-radius: 18px;
   padding: 15px 16px;
-  border: 1px solid rgba(212, 168, 67, 0.2);
+  border: 1px solid var(--border);
 }
 
 .coin-compare-head {
@@ -1721,8 +1753,8 @@ button {
 }
 
 .coin-mini-card {
-  background: rgba(50, 35, 68, 0.72);
-  border: 1px solid rgba(78, 70, 54, 0.35);
+  background: var(--card-2);
+  border: 1px solid var(--border-soft);
   border-radius: 12px;
   padding: 11px 12px;
   display: flex;
@@ -1737,7 +1769,7 @@ button {
 }
 
 .coin-mini-card:hover {
-  border-color: rgba(212, 168, 67, 0.35);
+  border-color: var(--gold);
 }
 
 .coin-mini-card:active {
@@ -1765,7 +1797,7 @@ button {
 }
 
 .coin-mini-pct.level-high {
-  background: rgba(147, 0, 10, 0.5);
+  background: var(--red-soft);
   color: var(--red);
 }
 

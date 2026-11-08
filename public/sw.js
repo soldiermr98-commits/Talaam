@@ -1,5 +1,5 @@
 /* طلام — سرویس‌ورکر آفلاین‌محور، بدون کش کردن نرخ‌های زنده */
-const CACHE = 'talam-v4';
+const CACHE = 'talam-v5';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
