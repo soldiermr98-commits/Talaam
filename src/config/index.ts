@@ -9,10 +9,14 @@ export const APP_ID = 'talam.app';
  */
 export const MOCK_MODE: boolean = import.meta.env.DEV === true;
 
-/** آدرس فایل نرخ — برای endpoint واقعی یا همین‌جا ثابت بده یا متغیر محیطی VITE_PRICES_URL */
+/** آدرس فایل نرخ — متصل به هاست اختصاصی طلام */
 const ENV_PRICES_URL = (import.meta.env.VITE_PRICES_URL as string | undefined) ?? '';
 export const PRICES_URL: string =
-  ENV_PRICES_URL !== '' ? ENV_PRICES_URL : MOCK_MODE ? '/prices.mock.json' : '/prices.json';
+  ENV_PRICES_URL !== ''
+    ? ENV_PRICES_URL
+    : MOCK_MODE
+      ? '/prices.mock.json'
+      : 'https://hojre24shop.ir/Talaam/api/public/prices.json';
 
 export const FETCH_TIMEOUT_MS = 5_000; // تایم‌اوت دریافت نرخ‌ها
 export const STALE_WARNING_MS = 6 * 60 * 60 * 1000; // بعد از ۶ ساعت نرخ «قدیمی» تلقی می‌شود
