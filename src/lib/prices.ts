@@ -77,8 +77,8 @@ export async function savePrices(data: PriceData): Promise<void> {
   await storageSetJSON(PRICES_STORAGE_KEY, data);
 }
 
-/** دریافت نرخ‌ها با تایم‌اوت؛ هر خطایی throw می‌شود و caller بی‌صدا نادیده می‌گیرد */
-export async function fetchPrices(url: string = PRICES_URL, timeoutMs = FETCH_TIMEOUT_MS): Promise<PriceData> {
+/** دریافت یک آدرس نرخ با تایم‌اوت */
+async function fetchSinglePriceUrl(url: string, timeoutMs: number): Promise<PriceData> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -91,6 +91,29 @@ export async function fetchPrices(url: string = PRICES_URL, timeoutMs = FETCH_TI
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** دریافت نرخ‌ها با تایم‌اوت؛ در حالت پیش‌فرض مسیرهای جایگزین زیرپوشه هم بررسی می‌شوند */
+export async function fetchPrices(url: string = PRICES_URL, timeoutMs = FETCH_TIMEOUT_MS): Promise<PriceData> {
+  if (url !== PRICES_URL) {
+    return fetchSinglePriceUrl(url, timeoutMs);
+  }
+  const candidates = [
+    url,
+    './api/public/prices.json',
+    './server/public/prices.json',
+    './prices.json',
+  ];
+  let lastErr: unknown;
+  for (const candidate of candidates) {
+    try {
+      const sep = candidate.includes('?') ? '&' : '?';
+      return await fetchSinglePriceUrl(`${candidate}${sep}t=${Date.now()}`, timeoutMs);
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('fetch failed');
 }
 
 /** زمان نسبی فارسی: «۱۰ دقیقه پیش» + پرچم قدیمی‌بودن (>۶ ساعت) */

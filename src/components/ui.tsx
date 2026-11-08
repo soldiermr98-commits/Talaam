@@ -1,6 +1,7 @@
 // اجزای کوچک رابط: چیپ، سگمنت، کلید، جمع‌شدنی، شیت پایین
 
 import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDownIcon, CloseIcon } from './icons';
 
 export function Chip({
@@ -115,7 +116,7 @@ export function Sheet({
     };
   }, [onClose]);
 
-  return (
+  const content = (
     <div className="sheet-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="sheet" role="dialog" aria-modal="true" aria-label={title}>
         <div className="sheet-head">
@@ -132,4 +133,6 @@ export function Sheet({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(content, document.body) : content;
 }

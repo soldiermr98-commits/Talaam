@@ -7,23 +7,11 @@ import { Sheet } from './ui';
 import { CheckIcon, PencilIcon } from './icons';
 
 export function PriceStrip() {
-  const { gold18, mazaneh, updatedAtStale, online, isManual, setManualGold18, settings, everFetched } = useApp();
+  const { gold18, mazaneh, updatedAtStale, online, isManual, setManualGold18, settings } = useApp();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
-
-  // اولین اجرا بدون داده و آفلاین → مستقیم پاپ‌اپ ورود دستی؛ با رسیدن نرخ، بسته شود
-  const prevGold = useRef(gold18);
-  useEffect(() => {
-    if (prevGold.current <= 0 && gold18 > 0) {
-      setEditing(false);
-      setDraft('');
-    }
-    prevGold.current = gold18;
-    if (gold18 <= 0 && !editing && !everFetched) setEditing(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gold18, everFetched]);
 
   useEffect(() => {
     if (editing) setTimeout(() => inputRef.current?.focus(), 120);
