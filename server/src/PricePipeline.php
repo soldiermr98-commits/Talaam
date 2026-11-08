@@ -120,7 +120,9 @@ class PricePipeline
             $proposals = [];   // field => [[id, value], ...] برای تأیید متقاطع
             $contributed = []; // ترتیب منابع مشارکت‌کننده
             $contributedLabels = [];
+            $cachedFallbacks = []; // ذخیره کش پروایدرهای skip/fail برای دور دوم
 
+            // دور اول: فقط پروایدرهایی که الان نوبت فراخوانی زنده‌شان رسیده (Due) به ترتیب چرخشی
             foreach ($orderedProviders as $provider) {
                 $pid = $provider->id();
                 $plabel = method_exists($provider, 'label') ? (string)$provider->label() : ($pid === 'manual' ? 'نرخ دستی' : $pid);
@@ -166,24 +168,30 @@ class PricePipeline
                     $this->log('provider "' . $pid . '" skipped: ' . $due['reason']);
                 }
 
-                // cache fallback — وقتی skip/fail شد و داده کش سالمی در بازه max_age دارد
-                if ($data === null) {
+                if ($data !== null) {
+                    $beforeCount = count($contributed);
+                    $this->mergeInto($merged, $data, $pid, $fieldSource, $fieldTs, $proposals, $contributed, $dataTs);
+                    if (count($contributed) > $beforeCount && !in_array($plabel, $contributedLabels, true)) {
+                        $contributedLabels[] = $plabel;
+                    }
+                } else {
+                    // ثبت در لیست کش برای دور دوم (تا جلوی پروایدرهای زنده بعدی در چرخش را نگیرد)
                     $ld = $ps[$pid]['last_data'] ?? null;
                     $ts = (int)($ps[$pid]['last_data_ts'] ?? 0);
                     $maxAge = method_exists($provider, 'getMaxAgeSeconds') ? $provider->getMaxAgeSeconds() : null;
                     if (is_array($ld) && $maxAge !== null && $ts > 0 && (time() - $ts) <= $maxAge) {
-                        $data = $ld;
-                        $dataTs = $ts;
-                        $this->log('provider "' . $pid . '" — using cached data (' . (time() - $ts) . 's old)');
+                        $cachedFallbacks[] = ['pid' => $pid, 'label' => $plabel, 'data' => $ld, 'ts' => $ts];
                     }
                 }
-                if ($data === null) {
-                    continue;
-                }
+            }
+
+            // دور دوم (Cache Fallback): اگر فیلدی از پروایدرهای زنده پر نشد، از کش پروایدرهای قبلی تکمیل شود
+            foreach ($cachedFallbacks as $fb) {
+                $this->log('provider "' . $fb['pid'] . '" — using cached data (' . (time() - $fb['ts']) . 's old)');
                 $beforeCount = count($contributed);
-                $this->mergeInto($merged, $data, $pid, $fieldSource, $fieldTs, $proposals, $contributed, $dataTs);
-                if (count($contributed) > $beforeCount && !in_array($plabel, $contributedLabels, true)) {
-                    $contributedLabels[] = $plabel;
+                $this->mergeInto($merged, $fb['data'], $fb['pid'], $fieldSource, $fieldTs, $proposals, $contributed, $fb['ts']);
+                if (count($contributed) > $beforeCount && !in_array($fb['label'], $contributedLabels, true)) {
+                    $contributedLabels[] = $fb['label'];
                 }
             }
 
