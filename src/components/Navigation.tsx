@@ -2,7 +2,7 @@
 
 import React from 'react';
 import type { TabKey } from '../state/AppContext';
-import { CalculatorIcon, CoinsIcon, DollarIcon, GemIcon } from './icons';
+import { CalculatorIcon, CoinDollarIcon, GemIcon, RecycleIcon } from './icons';
 
 const TOP_TABS: { key: TabKey; label: string }[] = [
   { key: 'new', label: 'طلای نو' },
@@ -25,8 +25,8 @@ export function TabBar({ tab, onChange }: { tab: TabKey; onChange: (t: TabKey) =
 
 const NAV_ITEMS: { key: TabKey; label: string; icon: (size: number) => React.ReactNode }[] = [
   { key: 'new', label: 'طلای نو', icon: (s) => <GemIcon size={s} /> },
-  { key: 'second', label: 'دست دوم و آب‌شده', icon: (s) => <CoinsIcon size={s} /> },
-  { key: 'coin', label: 'حباب سکه', icon: (s) => <DollarIcon size={s} /> },
+  { key: 'second', label: 'دست دوم و آب‌شده', icon: (s) => <RecycleIcon size={s} /> },
+  { key: 'coin', label: 'حباب سکه', icon: (s) => <CoinDollarIcon size={s} /> },
   { key: 'reverse', label: 'درصد حساب', icon: (s) => <CalculatorIcon size={s} /> },
 ];
 
@@ -36,7 +36,7 @@ export function BottomNav({ tab, onChange }: { tab: TabKey; onChange: (t: TabKey
       <div className="inner">
         {NAV_ITEMS.map((item) => (
           <button key={item.key} type="button" className={`nav-item${tab === item.key ? ' active' : ''}`} onClick={() => onChange(item.key)} aria-current={tab === item.key ? 'page' : undefined}>
-            {item.icon(21)}
+            {item.icon(22)}
             <span>{item.label}</span>
           </button>
         ))}

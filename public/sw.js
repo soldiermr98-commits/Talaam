@@ -1,5 +1,5 @@
 /* طلام — سرویس‌ورکر آفلاین‌محور، بدون وابستگی خارجی */
-const CACHE = 'talam-v1';
+const CACHE = 'talam-v2';
 
 self.addEventListener('install', () => {
   self.skipWaiting();

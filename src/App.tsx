@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { AppProvider, type TabKey } from './state/AppContext';
 import { TopBar } from './components/TopBar';
 import { PriceStrip } from './components/PriceStrip';
-import { TabBar, BottomNav } from './components/Navigation';
+import { BottomNav } from './components/Navigation';
 import { AdBanner } from './components/AdBanner';
 import { NewGoldTab } from './screens/tabs/NewGoldTab';
 import { SecondHandTab } from './screens/tabs/SecondHandTab';
@@ -22,21 +22,23 @@ function Shell() {
   return (
     <div className="app">
       <div className="app-main">
-        <TopBar onSettings={() => setSettingsOpen(true)} />
-        <div className="content">
+        <div className="top-header-shell">
+          <TopBar onSettings={() => setSettingsOpen(true)} />
           <PriceStrip />
-          <TabBar tab={tab} onChange={setTab} />
-
+        </div>
+        <main className="content">
           {tab === 'new' && <NewGoldTab onShareInvoice={() => setInvoiceOpen(true)} />}
           {tab === 'second' && <SecondHandTab />}
           {tab === 'coin' && <CoinTab />}
           {tab === 'reverse' && <ReverseTab />}
 
-          <p className="footer-note">
-            <LockIcon size={13} />
-            محاسبه تقریبی، ملاک نرخ طلافروشی است.
-          </p>
-        </div>
+          {tab !== 'coin' ? (
+            <p className="footer-note">
+              <LockIcon size={13} />
+              محاسبه تقریبی، ملاک نرخ طلافروشی است.
+            </p>
+          ) : null}
+        </main>
       </div>
 
       <BottomNav tab={tab} onChange={setTab} />

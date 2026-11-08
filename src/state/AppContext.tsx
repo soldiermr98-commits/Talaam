@@ -168,7 +168,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     document.documentElement.dataset.theme = resolvedTheme;
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', resolvedTheme === 'dark' ? '#1E1030' : '#FAF6EE');
+    if (meta) meta.setAttribute('content', resolvedTheme === 'dark' ? '#1A0C2C' : '#FAF6EE');
   }, [resolvedTheme]);
 
   const refreshPrices = useCallback(async (manualFetch = false) => {

@@ -190,4 +190,61 @@ export const LockIcon = (p: IconProps) => (
   </Base>
 );
 
+export const CoinDollarIcon = (p: IconProps) => (
+  <Base {...p}>
+    <circle cx="12" cy="12" r="9.5" />
+    <path d="M12 7v10" />
+    <path d="M14.8 9.2a2.4 2.4 0 0 0-2.3-1.4h-1a2.1 2.1 0 0 0 0 4.2h1a2.1 2.1 0 0 1 0 4.2h-1a2.4 2.4 0 0 1-2.3-1.4" />
+  </Base>
+);
+
+export const RecycleIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M7 19H4.815a1.83 1.83 0 0 1-1.57-.881 1.785 1.785 0 0 1-.004-1.784L7.196 9.5" />
+    <path d="M11 19h8.203a1.83 1.83 0 0 0 1.556-.89 1.784 1.784 0 0 0 0-1.775l-1.226-2.12" />
+    <path d="m14 16-3 3 3 3" />
+    <path d="M8.293 13.596 7.196 9.5 3.1 10.598" />
+    <path d="m9.344 5.811 1.093-1.892A1.83 1.83 0 0 1 11.985 3a1.784 1.784 0 0 1 1.546.888l3.943 6.843" />
+    <path d="m13.378 9.633 4.096 1.098 1.097-4.096" />
+  </Base>
+);
+
+export const CandlestickIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M9 5v4" />
+    <rect width="4" height="6" x="7" y="9" rx="1" />
+    <path d="M9 15v4" />
+    <path d="M17 3v2" />
+    <rect width="4" height="8" x="15" y="5" rx="1" />
+    <path d="M17 13v6" />
+  </Base>
+);
+
+export const StarFilledIcon = ({ size = 16, ...rest }: IconProps) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    stroke="currentColor"
+    strokeWidth={1.5}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+    {...rest}
+  >
+    <path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.26L7 14.14 2 9.27l6.91-1.01Z" />
+  </svg>
+);
+
+export const JewelerScaleIcon = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M6 2h12" />
+    <path d="M6 22h12" />
+    <path d="M6 2a6 6 0 0 0 6 6 6 6 0 0 0 6-6" />
+    <path d="M6 22a6 6 0 0 1 6-6 6 6 0 0 1 6 6" />
+    <path d="M12 8v8" />
+  </Base>
+);
+
 export const ScaleSmallIcon = ScaleIcon;

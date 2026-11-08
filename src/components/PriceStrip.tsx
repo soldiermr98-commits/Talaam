@@ -1,14 +1,13 @@
-// نوار نرخ طلای ۱۸ عیار — ویرایش در پاپ‌اپ شیت، نمایش زمان بروزرسانی و هشدار stale
+// نوار نرخ طلای ۱۸ عیار و مظنه — ویرایش در پاپ‌اپ شیت، هماهنگ با طرح مرجع
 
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../state/AppContext';
 import { formatMoney, parseMoney, toPersianDigits } from '../lib/numbers';
 import { Sheet } from './ui';
-import { CheckIcon, PencilIcon, WifiOffIcon } from './icons';
+import { CheckIcon, PencilIcon } from './icons';
 
 export function PriceStrip() {
-  const { prices, gold18, updatedAtText, updatedAtStale, online, isManual, setManualGold18, settings, everFetched } = useApp();
-  const sourceText = !isManual ? (prices?.source_label || prices?.source || '') : '';
+  const { gold18, mazaneh, updatedAtStale, online, isManual, setManualGold18, settings, everFetched } = useApp();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
@@ -55,48 +54,44 @@ export function PriceStrip() {
   };
 
   const priceDisplay = gold18 > 0 ? formatMoney(gold18, settings.digits) : null;
+  const mazanehDisplay = mazaneh > 0 ? formatMoney(mazaneh, settings.digits) : null;
 
   return (
     <>
-      <section className="card strip" aria-label="نرخ طلای ۱۸ عیار">
-        <div className="strip-icon">
-          <CheckDollar />
-        </div>
-        <div className="strip-info">
+      <section className="ticker-strip" aria-label="نرخ طلای ۱۸ عیار">
+        <button type="button" className="ticker-main-btn" onClick={openEditor} title="ویرایش نرخ طلای ۱۸ عیار">
+          <span className={`ticker-dot${updatedAtStale ? ' stale' : ''}`} />
           {priceDisplay ? (
-            <div className="strip-line1">
-              <span>{isManual ? 'نرخ دستی طلای ۱۸ عیار:' : 'نرخ طلای ۱۸ عیار:'}</span>
-              <span className="strip-price">{priceDisplay}</span>
-              <span>تومان</span>
-            </div>
+            <>
+              <span className="ticker-label">{isManual ? 'گرم ۱۸ (دستی):' : 'گرم ۱۸ عیار:'}</span>
+              <span className="ticker-val-primary">{priceDisplay}</span>
+              <span className="ticker-unit">ت</span>
+            </>
           ) : (
-            <div className="strip-line1">
-              <span>{online ? 'نرخ ۱۸ عیار را وارد کن:' : 'آفلاین. نرخ طلا رو دستی وارد کن'}</span>
-            </div>
+            <span className="ticker-label">
+              {online ? 'نرخ ۱۸ عیار را وارد کن' : 'آفلاین — ورود نرخ دستی'}
+            </span>
           )}
-          <div className={`strip-sub${updatedAtStale ? ' stale' : ''}`}>
-            {gold18 > 0 ? (
-              <>
-                <span>بروزرسانی: {updatedAtText || 'نامشخص'}</span>
-                {sourceText ? <span>• منبع: {sourceText}</span> : null}
-                {updatedAtStale ? <span>• نرخ قدیمی است</span> : null}
-              </>
-            ) : (
-              <WifiOffIcon size={13} />
-            )}
-          </div>
+        </button>
+
+        <div className="ticker-side">
           {isManual ? (
-            <div className="strip-sub">
-              <span className="manual-chip">نرخ دستی — تا دریافت نرخ جدید معتبر است</span>
-              <button type="button" className="link-btn" onClick={() => setManualGold18(null)}>
-                بازگشت به نرخ خودکار
-              </button>
-            </div>
+            <button
+              type="button"
+              className="ticker-reset-btn"
+              onClick={() => setManualGold18(null)}
+              title="بازگشت به نرخ خودکار"
+            >
+              نرخ خودکار
+            </button>
+          ) : mazanehDisplay ? (
+            <button type="button" className="ticker-secondary-btn" onClick={openEditor}>
+              <span className="ticker-label">مظنه:</span>
+              <span className="ticker-val-gold">{mazanehDisplay}</span>
+            </button>
           ) : null}
-        </div>
-        <div className="strip-actions">
-          <button type="button" className="icon-btn" onClick={openEditor} aria-label="ویرایش نرخ">
-            <PencilIcon size={19} />
+          <button type="button" className="ticker-edit-icon" onClick={openEditor} aria-label="ویرایش نرخ">
+            <PencilIcon size={14} />
           </button>
         </div>
       </section>
@@ -144,15 +139,5 @@ export function PriceStrip() {
         </Sheet>
       ) : null}
     </>
-  );
-}
-
-function CheckDollar() {
-  // آیکون دلار در دایره — مطابق طراحی
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M12 2v20" />
-      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-    </svg>
   );
 }
