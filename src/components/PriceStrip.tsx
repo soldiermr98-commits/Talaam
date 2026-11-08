@@ -7,7 +7,8 @@ import { Sheet } from './ui';
 import { CheckIcon, PencilIcon, WifiOffIcon } from './icons';
 
 export function PriceStrip() {
-  const { gold18, updatedAtText, updatedAtStale, online, isManual, setManualGold18, settings, everFetched } = useApp();
+  const { prices, gold18, updatedAtText, updatedAtStale, online, isManual, setManualGold18, settings, everFetched } = useApp();
+  const sourceText = !isManual ? (prices?.source_label || prices?.source || '') : '';
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
@@ -77,6 +78,7 @@ export function PriceStrip() {
             {gold18 > 0 ? (
               <>
                 <span>بروزرسانی: {updatedAtText || 'نامشخص'}</span>
+                {sourceText ? <span>• منبع: {sourceText}</span> : null}
                 {updatedAtStale ? <span>• نرخ قدیمی است</span> : null}
               </>
             ) : (

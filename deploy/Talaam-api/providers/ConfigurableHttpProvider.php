@@ -48,6 +48,14 @@ class ConfigurableHttpProvider extends BaseProvider implements ProviderInterface
     private $minInterval;
     /** @var int */
     private $dailyCap;
+    /** @var int */
+    private $monthlyCap;
+    /** @var int|null */
+    private $activeStartHour;
+    /** @var int|null */
+    private $activeEndHour;
+    /** @var string */
+    private $label;
 
     public function __construct(array $options = [], array $http = [])
     {
@@ -57,6 +65,7 @@ class ConfigurableHttpProvider extends BaseProvider implements ProviderInterface
             throw new RuntimeException(static::class . ": option 'id' is required (bad provider config)");
         }
         $this->pid = $pid;
+        $this->label = trim((string)($options['label'] ?? $pid));
 
         $url = trim((string)($options['url'] ?? ''));
         if ($url === '' || !preg_match('#^https?://#i', $url)) {
@@ -95,11 +104,21 @@ class ConfigurableHttpProvider extends BaseProvider implements ProviderInterface
         $this->maxAge = isset($options['max_age_seconds']) && (int)$options['max_age_seconds'] > 0 ? (int)$options['max_age_seconds'] : null;
         $this->minInterval = (int)($options['min_interval_seconds'] ?? 0);
         $this->dailyCap = (int)($options['daily_cap'] ?? 0);
+        $this->monthlyCap = (int)($options['monthly_cap'] ?? 0);
+        if (isset($options['active_hours']) && is_array($options['active_hours']) && count($options['active_hours']) >= 2) {
+            $this->activeStartHour = (int)$options['active_hours'][0];
+            $this->activeEndHour = (int)$options['active_hours'][1];
+        }
     }
 
     public function id(): string
     {
         return $this->pid;
+    }
+
+    public function label(): string
+    {
+        return $this->label;
     }
 
     public function isEnabled(): bool
@@ -113,16 +132,36 @@ class ConfigurableHttpProvider extends BaseProvider implements ProviderInterface
         return $this->maxAge;
     }
 
-    /** آیا نوبت این منبع است؟ (daily cap + min interval — نزدیک سقف، فاصله ۲ برابر) */
-    public function isDue(array $providerState): array
+    /** آیا نوبت این منبع است؟ (پنجره ساعتی + سقف ماهانه + سقف روزانه + حداقل فاصله) */
+    public function isDue(array $providerState, ?int $currentHour = null): array
     {
+        if ($this->activeStartHour !== null && $this->activeEndHour !== null) {
+            $tz = new DateTimeZone('Asia/Tehran');
+            $h = $currentHour ?? (int)(new DateTime('now', $tz))->format('G');
+            if ($this->activeStartHour <= $this->activeEndHour) {
+                if ($h < $this->activeStartHour || $h >= $this->activeEndHour) {
+                    return ['due' => false, 'reason' => "outside active hours ({$this->activeStartHour}-{$this->activeEndHour})"];
+                }
+            } else {
+                // بازه عبوری از نیمه‌شب (مثلاً 22 تا 6)
+                if ($h < $this->activeStartHour && $h >= $this->activeEndHour) {
+                    return ['due' => false, 'reason' => "outside active hours ({$this->activeStartHour}-{$this->activeEndHour})"];
+                }
+            }
+        }
+        $month = date('Ym');
+        $mCount = (int)($providerState['monthly'][$month] ?? 0);
+        if ($this->monthlyCap > 0 && $mCount >= $this->monthlyCap) {
+            return ['due' => false, 'reason' => "monthly cap reached ($mCount/{$this->monthlyCap})"];
+        }
         $today = date('Ymd');
         $count = (int)($providerState['daily'][$today] ?? 0);
         if ($this->dailyCap > 0 && $count >= $this->dailyCap) {
             return ['due' => false, 'reason' => "daily cap reached ($count/{$this->dailyCap})"];
         }
         $interval = $this->minInterval;
-        if ($this->dailyCap > 0 && $count >= (int)floor($this->dailyCap * 0.8)) {
+        if (($this->dailyCap > 0 && $count >= (int)floor($this->dailyCap * 0.8))
+            || ($this->monthlyCap > 0 && $mCount >= (int)floor($this->monthlyCap * 0.85))) {
             $interval *= 2; // نزدیک سقف → فاصله بیشتر
         }
         $last = (int)($providerState['last_call_ts'] ?? 0);
@@ -152,6 +191,7 @@ class ConfigurableHttpProvider extends BaseProvider implements ProviderInterface
     {
         return [
             'id' => $this->pid,
+            'label' => $this->label,
             'enabled' => $this->enabled,
             'method' => $this->method,
             'url_masked' => $this->maskedUrl(),
@@ -159,6 +199,8 @@ class ConfigurableHttpProvider extends BaseProvider implements ProviderInterface
             'max_age_seconds' => $this->maxAge,
             'min_interval_seconds' => $this->minInterval,
             'daily_cap' => $this->dailyCap,
+            'monthly_cap' => $this->monthlyCap,
+            'active_hours' => $this->activeStartHour !== null ? [$this->activeStartHour, $this->activeEndHour] : null,
         ];
     }
 

@@ -76,21 +76,64 @@ class PricePipeline
             $lastGood = $this->readJson($this->lastGoodPath);
             $state = $this->readJson($this->statePath) ?? [];
             $ps = is_array($state['provider_state'] ?? null) ? $state['provider_state'] : [];
+            $schedule = is_array($this->config['schedule'] ?? null) ? $this->config['schedule'] : [];
+
+            // بررسی ساعات خاموشی شبانه (مثلاً ۲۳ تا ۶ صبح): هیچ درخواستی به APIها زده نشود، فقط اگر override دستی فعال بود اعمال شود
+            $tz = new DateTimeZone((string)($this->config['timezone'] ?? 'Asia/Tehran'));
+            $currentHour = isset($schedule['force_hour']) ? (int)$schedule['force_hour'] : (int)(new DateTime('now', $tz))->format('G');
+            $sleepHours = is_array($schedule['sleep_hours'] ?? null) ? $schedule['sleep_hours'] : null;
+            $inSleepWindow = false;
+            if ($sleepHours !== null && count($sleepHours) >= 2) {
+                $shStart = (int)$sleepHours[0];
+                $shEnd = (int)$sleepHours[1];
+                $inSleepWindow = ($shStart <= $shEnd)
+                    ? ($currentHour >= $shStart && $currentHour < $shEnd)
+                    : ($currentHour >= $shStart || $currentHour < $shEnd);
+            }
+
+            // چرخش نوبتی (Round-Robin) بین پروایدرهای غیر دستی (در صورت فعال بودن در schedule)
+            $orderedProviders = $this->providers;
+            $rrCursor = (int)($state['rr_cursor'] ?? 0);
+            $nextRrCursor = $rrCursor;
+            if (!empty($schedule['round_robin']) && count($orderedProviders) > 1) {
+                $apiList = [];
+                $manualList = [];
+                foreach ($orderedProviders as $p) {
+                    if ($p instanceof ManualProvider) {
+                        $manualList[] = $p;
+                    } else {
+                        $apiList[] = $p;
+                    }
+                }
+                $nApi = count($apiList);
+                if ($nApi > 1) {
+                    $offset = $rrCursor % $nApi;
+                    $rotated = array_merge(array_slice($apiList, $offset), array_slice($apiList, 0, $offset));
+                    $orderedProviders = array_merge($rotated, $manualList);
+                    $nextRrCursor = ($rrCursor + 1) % $nApi;
+                }
+            }
 
             $merged = ['gold18' => null, 'mazaneh' => null, 'coins' => ['emami' => null, 'bahar' => null, 'nim' => null, 'rob' => null, 'gerami' => null]];
             $fieldSource = []; // field => provider id (داخلی)
             $fieldTs = [];     // field => unix ts
             $proposals = [];   // field => [[id, value], ...] برای تأیید متقاطع
             $contributed = []; // ترتیب منابع مشارکت‌کننده
+            $contributedLabels = [];
 
-            foreach ($this->providers as $provider) {
+            foreach ($orderedProviders as $provider) {
                 $pid = $provider->id();
+                $plabel = method_exists($provider, 'label') ? (string)$provider->label() : ($pid === 'manual' ? 'نرخ دستی' : $pid);
+                if ($inSleepWindow && !($provider instanceof ManualProvider)) {
+                    $this->log('provider "' . $pid . '" skipped: night sleep window (' . $currentHour . ':00)');
+                    continue;
+                }
                 if (method_exists($provider, 'isEnabled') && !$provider->isEnabled()) {
                     $this->log('provider "' . $pid . '" disabled — skipped');
                     continue;
                 }
                 $due = method_exists($provider, 'isDue')
-                    ? $provider->isDue($ps[$pid] ?? [])
+                    ? $provider->isDue($ps[$pid] ?? [], $currentHour)
                     : ['due' => true, 'reason' => 'ok'];
 
                 $data = null;
@@ -105,10 +148,14 @@ class PricePipeline
                         } else {
                             $dataTs = time();
                             if (method_exists($provider, 'isDue')) {
-                                // شمارنده روزانه + زمان آخرین فراخوانی واقعی
+                                // شمارنده روزانه، ماهانه + زمان آخرین فراخوانی واقعی + ذخیره آخرین داده سالم
                                 $today = date('Ymd');
+                                $month = date('Ym');
                                 $ps[$pid]['daily'][$today] = (int)($ps[$pid]['daily'][$today] ?? 0) + 1;
+                                $ps[$pid]['monthly'][$month] = (int)($ps[$pid]['monthly'][$month] ?? 0) + 1;
                                 $ps[$pid]['last_call_ts'] = time();
+                                $ps[$pid]['last_data'] = $data;
+                                $ps[$pid]['last_data_ts'] = $dataTs;
                             }
                         }
                     } catch (Throwable $e) {
@@ -133,14 +180,24 @@ class PricePipeline
                 if ($data === null) {
                     continue;
                 }
+                $beforeCount = count($contributed);
                 $this->mergeInto($merged, $data, $pid, $fieldSource, $fieldTs, $proposals, $contributed, $dataTs);
+                if (count($contributed) > $beforeCount && !in_array($plabel, $contributedLabels, true)) {
+                    $contributedLabels[] = $plabel;
+                }
             }
 
+            $state['rr_cursor'] = $nextRrCursor;
             $this->writeProviderState($state, $ps);
+            $state = $this->readJson($this->statePath) ?? $state;
             // ثبت منبع هر فیلد (لاگ داخلی — در JSON عمومی فقط source تجمیعی میرود)
-            $this->writeState($state, ['field_source' => $fieldSource]);
+            $this->writeState($state, ['field_source' => $fieldSource, 'rr_cursor' => $nextRrCursor]);
 
             if ($merged['gold18'] === null) {
+                if ($inSleepWindow && is_array($lastGood) && isset($lastGood['gold18']) && (float)$lastGood['gold18'] > 0) {
+                    $this->log('night sleep window — keeping last published rates without external API call');
+                    return ['status' => 'ok', 'published' => $lastGood];
+                }
                 return $this->serveStale($lastGood);
             }
             if ($merged['mazaneh'] === null) {
@@ -163,7 +220,8 @@ class PricePipeline
             if ($sourceStr === '') {
                 $sourceStr = 'unknown';
             }
-            $payload = $this->buildPayload($merged, $sourceStr, false, $fieldTs);
+            $sourceLabelStr = implode(' + ', array_unique($contributedLabels));
+            $payload = $this->buildPayload($merged, $sourceStr, false, $fieldTs, $sourceLabelStr);
             $this->writeAtomic($this->lastGoodPath, $payload);
             $this->writeAtomic($this->publishPath, $payload);
             $this->resetAllDown();
@@ -447,7 +505,7 @@ class PricePipeline
         return ['status' => 'stale', 'published' => $lastGood];
     }
 
-    private function buildPayload(array $n, string $source, bool $stale, array $fieldTs = []): array
+    private function buildPayload(array $n, string $source, bool $stale, array $fieldTs = [], string $sourceLabel = ''): array
     {
         $tz = new DateTimeZone((string)($this->config['timezone'] ?? 'Asia/Tehran'));
         $nowIso = (new DateTime('now', $tz))->format(DateTime::ATOM);
@@ -459,6 +517,7 @@ class PricePipeline
             'schema_version' => 1,
             'updated_at' => $nowIso,
             'source' => $source,
+            'source_label' => $sourceLabel !== '' ? $sourceLabel : $source,
             'stale' => $stale,
             'gold18' => (int)$n['gold18'],
             'mazaneh' => (int)$n['mazaneh'],

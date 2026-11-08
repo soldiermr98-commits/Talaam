@@ -18,7 +18,8 @@ export interface PriceData {
   mazaneh: number; // تومان بر مثقال ۱۷ عیار
   coins: CoinPrices; // قیمت بازار سکه‌ها
   stale?: boolean; // true = سرور نتوانسته تازه‌سازی کند و last good را می‌فرستد
-  source?: string; // شناسه کوتاه منبع (مثلاً 'manual' یا 'navasan')
+  source?: string; // شناسه کوتاه منبع (مثلاً 'manual' یا 'ezrate')
+  source_label?: string; // نام نمایشی پروایدر (مثلاً 'ایزی‌ریت (EZRate)')
 }
 
 export const PRICE_KEYS = ['emami', 'bahar', 'nim', 'rob', 'gerami'] as const;
@@ -62,6 +63,7 @@ export function validatePriceData(x: unknown): PriceData | null {
     coins,
     stale: o.stale === true,
     source: typeof o.source === 'string' && o.source !== '' ? o.source : undefined,
+    source_label: typeof o.source_label === 'string' && o.source_label !== '' ? o.source_label : undefined,
   };
 }
 

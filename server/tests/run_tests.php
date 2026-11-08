@@ -612,19 +612,56 @@ t('ProviderFactory: کلاس ناشناخته → پیام واضح', function (
 });
 
 // ─── جمعبندی ───
-t('DefaultConfig: ساختار کامل + ساخت منابع پیشفرض (markaznerkh + ezrate)', function () {
+t('DefaultConfig: ساختار کامل + ساخت منابع پیشفرض چندگانه (markaznerkh, nerkh, ezrate, gheymat, pricetoday, manual)', function () {
     $dir = tmpDir();
     $cfg = DefaultConfig::get($dir);
     assertTrue2(isset($cfg['providers'][0]['options']['url']), 'provider url exists');
-    assertTrue2(strpos($cfg['providers'][0]['options']['url'], 'markaznerkh') !== false, 'default provider 1 = markaznerkh');
-    assertTrue2(strpos($cfg['providers'][1]['options']['url'], 'ezrate.me') !== false, 'default provider 2 = ezrate');
-    assertTrue2(isset($cfg['providers'][2]) && ($cfg['providers'][2]['class'] ?? '') === 'ManualProvider', 'manual fallback last');
+    assertTrue2(strpos($cfg['providers'][0]['options']['url'], 'markaznerkh') !== false, 'default provider 0 = markaznerkh');
+    assertTrue2(strpos($cfg['providers'][1]['options']['url'], 'nerkh.io') !== false, 'default provider 1 = nerkh');
+    assertTrue2(strpos($cfg['providers'][2]['options']['url'], 'ezrate.me') !== false, 'default provider 2 = ezrate');
+    assertTrue2(strpos($cfg['providers'][3]['options']['url'], 'gheymat.online') !== false, 'default provider 3 = gheymat');
+    assertTrue2(strpos($cfg['providers'][4]['options']['url'], 'priceto.day') !== false, 'default provider 4 = pricetoday');
+    assertTrue2(isset($cfg['providers'][5]) && ($cfg['providers'][5]['class'] ?? '') === 'ManualProvider', 'manual fallback last');
     assertTrue2($cfg['admin_token'] !== '', 'admin token preset');
     $providers = ProviderFactory::createAll($cfg);
-    assertSame2(3, count($providers));
-    assertTrue2($providers[0] instanceof ConfigurableHttpProvider);
-    assertTrue2($providers[1] instanceof ConfigurableHttpProvider);
-    assertTrue2($providers[2] instanceof ManualProvider);
+    assertSame2(6, count($providers));
+    deleteDir($dir);
+});
+
+t('active_hours, monthly_cap, sleep_hours و چرخش نوبتی Round-Robin + source_label', function () {
+    $p = new ConfigurableHttpProvider([
+        'id' => 'nerkh',
+        'label' => 'نرخ (nerkh.io)',
+        'url' => 'https://api.nerkh.io/v1/prices/json/gold',
+        'active_hours' => [9, 18],
+        'monthly_cap' => 450,
+        'daily_cap' => 12,
+        'map' => ['gold18' => ['path' => 'a']],
+    ]);
+    assertSame2(false, $p->isDue([], 8)['due'], 'ساعت ۸ صبح خارج از بازه ۹-۱۸');
+    assertSame2(true, $p->isDue([], 12)['due'], 'ساعت ۱۲ ظهر داخل بازه ۹-۱۸');
+    assertSame2(false, $p->isDue([], 19)['due'], 'ساعت ۱۹ خارج از بازه ۹-۱۸');
+    assertSame2(false, $p->isDue(['monthly' => [date('Ym') => 450]], 12)['due'], 'سقف ماهانه ۴۵۰ پر شده');
+
+    // تست چرخش نوبتی Round-Robin بین دو پروایدر و خاموشی شبانه
+    $dir = tmpDir();
+    $cfg = makeConfig($dir, ['schedule' => ['round_robin' => true, 'sleep_hours' => [23, 6], 'force_hour' => 14]]);
+    $p1 = new FakeProvider('p1', validData(8000000));
+    $p2 = new FakeProvider('p2', validData(8050000));
+    $pipe1 = new PricePipeline($cfg, [$p1, $p2]);
+    $r1 = $pipe1->run();
+    assertSame2('p1', $r1['published']['source'], 'نوبت اول باید از p1 بگیرد');
+
+    $pipe2 = new PricePipeline($cfg, [$p1, $p2]);
+    $r2 = $pipe2->run();
+    assertSame2('p2', $r2['published']['source'], 'نوبت دوم (Round-Robin) باید از p2 بگیرد');
+
+    // تست خاموشی شبانه (ساعت ۲ بامداد): نباید با شکست پروایدرها خطا دهد، آخرین نرخ سالم را نگه می‌دارد
+    $cfgNight = makeConfig($dir, ['schedule' => ['round_robin' => true, 'sleep_hours' => [23, 6], 'force_hour' => 2]]);
+    $pipeNight = new PricePipeline($cfgNight, [new FakeProvider('boom', new RuntimeException('must not be called at night'))]);
+    $rNight = $pipeNight->run();
+    assertSame2('ok', $rNight['status'], 'در ساعت خاموشی شبانه آخرین نرخ بدون خطا حفظ میشود');
+    assertSame2(8050000, $rNight['published']['gold18']);
     deleteDir($dir);
 });
 

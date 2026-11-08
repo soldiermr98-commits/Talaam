@@ -1,7 +1,14 @@
 <?php
 /**
- * پیکربندی پیشفرض طلام — همین فایل در بسته deploy میآید و «هیچ ویرایشی» لازم نیست.
- * منبع پیشفرض: markaznerkh (به انتخاب مالک پروژه). تغییرات بعدی از داشبورد /admin انجام میشود.
+ * پیکربندی پیش‌فرض طلام — استراتژی چندمنبعی هوشمند (Round-Robin + محافظت سهمیه + خاموشی شبانه ۲۳ تا ۶ صبح).
+ *
+ * پروایدرهای پیش‌فرض:
+ *   0) markaznerkh    — مرکزنرخ (MarkazNerkh.ir)
+ *   1) nerkh          — نرخ (nerkh.io): محدودیت ۴۵۰/ماه → فقط ساعت ۹ تا ۱۸، هر ۸۰ دقیقه، سقف ۱۲/روز (≈۳۶۰/ماه)
+ *   2) ezrate         — ایزی‌ریت (EZRate.me): محدودیت ۵۰/روز و ۱۵۰۰/ماه → هر ۳۵ دقیقه، سقف ۲۵/روز
+ *   3) gheymat        — قیمت آنلاین (gheymat.online): رایگان بدون توکن (۲۵۰/روز) → طلا ۱۸، مثقال و ۵ سکه کامل
+ *   4) pricetoday     — PriceTo.day: رایگان بدون توکن و بدون محدودیت رسمی → پشتیبان سبک و سریع
+ *   5) manual         — نرخ دستی (override.json)
  */
 class DefaultConfig
 {
@@ -9,9 +16,14 @@ class DefaultConfig
     {
         return [
             'timezone' => 'Asia/Tehran',
+            'schedule' => [
+                'sleep_hours' => [23, 6], // از ۲۳:۰۰ تا ۰۶:۰۰ هیچ درخواستی به APIها ارسال نشود
+                'round_robin' => true,    // چرخش نوبتی در طول روز بین پروایدرهای فعال
+            ],
             'providers' => [
                 ['class' => 'ConfigurableHttpProvider', 'options' => [
                     'id' => 'markaznerkh',
+                    'label' => 'مرکزنرخ (MarkazNerkh)',
                     'enabled' => true,
                     'url' => 'https://market.markaznerkh.ir/api/v1/rates',
                     'method' => 'GET',
@@ -22,12 +34,37 @@ class DefaultConfig
                         'gold18' => ['path' => 'GOLD_18K.price', 'unit' => 'toman'],
                         'coins.emami' => ['path' => 'COIN_86.price', 'unit' => 'toman'],
                     ],
-                    'max_age_seconds' => 600,
+                    'max_age_seconds' => 1800,
                     'min_interval_seconds' => 300,
                     'daily_cap' => 300,
                 ]],
                 ['class' => 'ConfigurableHttpProvider', 'options' => [
+                    'id' => 'nerkh',
+                    'label' => 'نرخ (nerkh.io)',
+                    'enabled' => false,
+                    'url' => 'https://api.nerkh.io/v1/prices/json/gold',
+                    'method' => 'GET',
+                    'query' => [],
+                    'headers' => [],
+                    'auth' => ['type' => 'header', 'name' => 'Authorization', 'key' => ''],
+                    'map' => [
+                        'gold18' => ['path' => 'data.prices.GOLD18K.current', 'unit' => 'rial'],
+                        'mazaneh' => ['path' => 'data.prices.MESGHAL.current', 'unit' => 'rial'],
+                        'coins.emami' => ['path' => 'data.prices.SEKE_EMAMI.current', 'unit' => 'rial'],
+                        'coins.bahar' => ['path' => 'data.prices.SEKE_BAHAR.current', 'unit' => 'rial'],
+                        'coins.nim' => ['path' => 'data.prices.SEKE_NIM.current', 'unit' => 'rial'],
+                        'coins.rob' => ['path' => 'data.prices.SEKE_ROB.current', 'unit' => 'rial'],
+                        'coins.gerami' => ['path' => 'data.prices.SEKE_GERAMI.current', 'unit' => 'rial'],
+                    ],
+                    'active_hours' => [9, 18],      // فقط ساعات اوج بازار (۹ تا ۱۸)
+                    'min_interval_seconds' => 4800, // هر ۸۰ دقیقه (۷۵ تا ۹۰ دقیقه)
+                    'daily_cap' => 12,              // حداکثر ۱۲ در روز ≈ ۳۶۰ در ماه
+                    'monthly_cap' => 420,           // سقف ایمن زیر ۴۵۰ درخواست ماهانه
+                    'max_age_seconds' => 5400,
+                ]],
+                ['class' => 'ConfigurableHttpProvider', 'options' => [
                     'id' => 'ezrate',
+                    'label' => 'ایزی‌ریت (EZRate)',
                     'enabled' => false,
                     'url' => 'https://api.ezrate.me/v1/rates',
                     'method' => 'GET',
@@ -43,9 +80,48 @@ class DefaultConfig
                         'coins.rob' => ['path' => 'data.symbol=rob.sell', 'unit' => 'toman'],
                         'coins.gerami' => ['path' => 'data.symbol=gerami.sell', 'unit' => 'toman'],
                     ],
-                    'max_age_seconds' => 600,
-                    'min_interval_seconds' => 300,
-                    'daily_cap' => 300,
+                    'min_interval_seconds' => 2100, // هر ۳۵ دقیقه (۲۰-۲۵ درخواست در روز)
+                    'daily_cap' => 25,              // ایمن زیر محدودیت ۵۰ روزانه
+                    'monthly_cap' => 1400,          // ایمن زیر محدودیت ۱۵۰۰ ماهانه
+                    'max_age_seconds' => 3600,
+                ]],
+                ['class' => 'ConfigurableHttpProvider', 'options' => [
+                    'id' => 'gheymat',
+                    'label' => 'قیمت آنلاین (gheymat.online)',
+                    'enabled' => true,
+                    'url' => 'https://backend.gheymat.online/api/prices',
+                    'method' => 'GET',
+                    'query' => [],
+                    'headers' => [],
+                    'auth' => ['type' => '', 'name' => '', 'key' => ''],
+                    'map' => [
+                        'gold18' => ['path' => 'data.symbol=GOLD18-IRT.buy_price', 'unit' => 'toman'],
+                        'mazaneh' => ['path' => 'data.symbol=GOLD18M-IRT.buy_price', 'unit' => 'toman'],
+                        'coins.emami' => ['path' => 'data.symbol=SEKE-IRT.buy_price', 'unit' => 'toman'],
+                        'coins.bahar' => ['path' => 'data.symbol=SEKB-IRT.buy_price', 'unit' => 'toman'],
+                        'coins.nim' => ['path' => 'data.symbol=SEKEN-IRT.buy_price', 'unit' => 'toman'],
+                        'coins.rob' => ['path' => 'data.symbol=SEKER-IRT.buy_price', 'unit' => 'toman'],
+                        'coins.gerami' => ['path' => 'data.symbol=SEKG-IRT.buy_price', 'unit' => 'toman'],
+                    ],
+                    'min_interval_seconds' => 600,  // هر ۱۰ دقیقه
+                    'daily_cap' => 220,             // زیر سقف ۲۵۰ درخواست روزانه رایگان
+                    'max_age_seconds' => 1800,
+                ]],
+                ['class' => 'ConfigurableHttpProvider', 'options' => [
+                    'id' => 'pricetoday',
+                    'label' => 'پرایس‌تودی (priceto.day)',
+                    'enabled' => true,
+                    'url' => 'https://api.priceto.day/v1/latest/irr/gold-18k',
+                    'method' => 'GET',
+                    'query' => [],
+                    'headers' => [],
+                    'auth' => ['type' => '', 'name' => '', 'key' => ''],
+                    'map' => [
+                        'gold18' => ['path' => 'price', 'unit' => 'rial'],
+                    ],
+                    'min_interval_seconds' => 600,
+                    'daily_cap' => 0,               // بدون محدودیت رسمی
+                    'max_age_seconds' => 3600,
                 ]],
                 ['class' => 'ManualProvider', 'options' => ['path' => $serverDir . '/data/override.json']],
             ],

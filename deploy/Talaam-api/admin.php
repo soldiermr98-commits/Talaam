@@ -41,6 +41,7 @@ if ($adminToken === '' || !hash_equals($adminToken, $given)) {
 
 $paths = $config['paths'] ?? [];
 $overridePath = (string)($paths['override'] ?? $serverDir . '/data/override.json');
+$statePath = (string)($paths['state'] ?? $serverDir . '/data/state.json');
 $msg = '';
 $msgType = 'ok';
 $rawPreview = '';
@@ -73,35 +74,47 @@ function maskKey(string $k): string
     return strlen($k) <= 10 ? '***' : substr($k, 0, 5) . '…' . substr($k, -4);
 }
 
-/** اطمینان از وجود هر دو پروایدر پیشفرض (markaznerkh و ezrate) در config */
+/** اطمینان از وجود پروایدرهای پیشفرض و تنظیمات schedule در config */
 function ensureProvidersList(array &$config, string $serverDir): void
 {
     $def = DefaultConfig::get($serverDir);
+    if (!isset($config['schedule']) || !is_array($config['schedule'])) {
+        $config['schedule'] = $def['schedule'];
+    }
     if (!isset($config['providers']) || !is_array($config['providers']) || empty($config['providers'])) {
         $config['providers'] = $def['providers'];
         return;
     }
-    // اگر ezrate هنوز در لیست نبود، قبل از Manual اضافه شود
-    $hasEz = false;
+    $existingIds = [];
     foreach ($config['providers'] as $p) {
-        if (($p['options']['id'] ?? '') === 'ezrate' || stripos((string)($p['options']['url'] ?? ''), 'ezrate.me') !== false) {
-            $hasEz = true;
-            break;
+        $id = $p['options']['id'] ?? '';
+        if ($id !== '') {
+            $existingIds[$id] = true;
         }
     }
-    if (!$hasEz) {
-        $ezBlock = $def['providers'][1];
+    $missing = [];
+    foreach ($def['providers'] as $dp) {
+        $did = $dp['options']['id'] ?? '';
+        if ($did !== '' && !isset($existingIds[$did])) {
+            $missing[] = $dp;
+        }
+    }
+    if (!empty($missing)) {
         $newList = [];
         $inserted = false;
         foreach ($config['providers'] as $p) {
             if (!$inserted && ($p['class'] ?? '') === 'ManualProvider') {
-                $newList[] = $ezBlock;
+                foreach ($missing as $m) {
+                    $newList[] = $m;
+                }
                 $inserted = true;
             }
             $newList[] = $p;
         }
         if (!$inserted) {
-            $newList[] = $ezBlock;
+            foreach ($missing as $m) {
+                $newList[] = $m;
+            }
         }
         $config['providers'] = $newList;
     }
@@ -112,16 +125,14 @@ function applySmartKeyOrCurl(array $opts, string $input): array
 {
     $input = trim($input);
     if ($input === '') {
-        return $opts; // بدون تغییر کلید
+        return $opts;
     }
-    // اگر کاربر دستور curl یا لینک کامل وارد کرده باشد
     if (stripos($input, 'curl ') !== false || preg_match('#^https?://#i', $input)) {
         $flat = str_replace(["\\\r\n", "\\\n"], ' ', $input);
         if (preg_match('/https?:\/\/[^\s"\'\\\\]+/i', $flat, $m)) {
             $fullUrl = trim($m[0], "\"'");
             $parts = parse_url($fullUrl);
             $baseUrl = ($parts['scheme'] ?? 'https') . '://' . ($parts['host'] ?? '') . (isset($parts['port']) ? ':' . $parts['port'] : '') . ($parts['path'] ?? '');
-            // اگر روی ezrate تک‌نرخی مثل /v1/rates/usd زده بود، خودکار به /v1/rates تبدیل شود تا طلا و سکه را بگیرد
             if (stripos($baseUrl, 'api.ezrate.me/v1/rates/') !== false) {
                 $baseUrl = 'https://api.ezrate.me/v1/rates';
             }
@@ -147,7 +158,6 @@ function applySmartKeyOrCurl(array $opts, string $input): array
         return $opts;
     }
 
-    // اگر فقط کلید API را وارد کرده باشد
     $isEzrate = stripos((string)($opts['url'] ?? ''), 'ezrate.me') !== false || ($opts['id'] ?? '') === 'ezrate';
     if ($isEzrate) {
         $cleanKey = (string)preg_replace('/^Bearer\s+/i', '', $input);
@@ -157,17 +167,19 @@ function applySmartKeyOrCurl(array $opts, string $input): array
             $input = 'Bearer ' . $input;
         }
         $opts['auth'] = [
-            'type' => $opts['auth']['type'] ?? 'header',
-            'name' => $opts['auth']['name'] ?? 'Authorization',
+            'type' => ($opts['auth']['type'] ?? '') !== '' ? $opts['auth']['type'] : 'header',
+            'name' => ($opts['auth']['name'] ?? '') !== '' ? $opts['auth']['name'] : 'Authorization',
             'key' => $input,
         ];
     }
     return $opts;
 }
 
-/** اعمال فیلدهای پیشرفته در صورت باز بودن بخش پیشرفته */
 function applyAdvancedFields(array $opts, array $post): array
 {
+    if (!empty($post['api_label'])) {
+        $opts['label'] = trim((string)$post['api_label']);
+    }
     if (!empty($post['api_url'])) {
         $rawUrl = trim((string)$post['api_url']);
         $parts = parse_url($rawUrl);
@@ -205,6 +217,8 @@ function applyAdvancedFields(array $opts, array $post): array
 ensureProvidersList($config, $serverDir);
 $lastGoodPath = (string)($paths['last_good'] ?? '');
 $lastGood = is_array(json_decode((string)@file_get_contents($lastGoodPath), true)) ? json_decode((string)file_get_contents($lastGoodPath), true) : null;
+$stateData = is_array(json_decode((string)@file_get_contents($statePath), true)) ? json_decode((string)file_get_contents($statePath), true) : [];
+$providerState = is_array($stateData['provider_state'] ?? null) ? $stateData['provider_state'] : [];
 
 // ─── POST handling ───
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
@@ -243,15 +257,20 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             ]);
             $providers = ProviderFactory::createAll($config);
             $result = (new PricePipeline($config, $providers))->run();
+            $srcLbl = $result['published']['source_label'] ?? ($result['published']['source'] ?? '?');
             $msg = $result['status'] === 'ok'
-                ? 'نرخ‌ها ذخیره و منتشر شد ✓ (منبع: ' . ($result['published']['source'] ?? '?') . ')'
+                ? 'نرخ‌ها ذخیره و منتشر شد ✓ — منبع فعال: ' . $srcLbl
                 : 'ذخیره شد؛ وضعیت انتشار: ' . $result['status'];
             $lastGood = $result['published'] ?? $lastGood;
         } elseif ($action === 'run_pipeline') {
             $providers = ProviderFactory::createAll($config);
             $result = (new PricePipeline($config, $providers))->run();
-            $msg = 'بروزرسانی انجام شد — وضعیت: ' . $result['status'] . (isset($result['published']['gold18']) ? ' (گرم ۱۸: ' . number_format((int)$result['published']['gold18']) . ' تومان)' : '');
+            $srcLbl = $result['published']['source_label'] ?? ($result['published']['source'] ?? '—');
+            $gPrice = isset($result['published']['gold18']) ? number_format((int)$result['published']['gold18']) . ' تومان' : '';
+            $msg = 'بروزرسانی انجام شد (' . $result['status'] . ') — دریافت‌شده از پروایدر: «' . $srcLbl . '» ' . ($gPrice !== '' ? "— گرم ۱۸: $gPrice" : '');
             $lastGood = $result['published'] ?? $lastGood;
+            $stateData = is_array(json_decode((string)@file_get_contents($statePath), true)) ? json_decode((string)file_get_contents($statePath), true) : [];
+            $providerState = is_array($stateData['provider_state'] ?? null) ? $stateData['provider_state'] : [];
         } elseif ($action === 'save_api' || $action === 'test_api' || $action === 'test_api_raw') {
             $activeTab = 'providers';
             $idx = isset($_POST['provider_index']) ? (int)$_POST['provider_index'] : 0;
@@ -267,7 +286,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
 
             if ($action === 'save_api') {
                 $config['providers'][$idx]['options'] = $opts;
-                // اگر کاربر این سرویس را «بعنوان منبع اول» تیک زده باشد، به ابتدای لیست منتقل شود
                 if (!empty($_POST['make_primary']) && $idx > 0) {
                     $item = $config['providers'][$idx];
                     array_splice($config['providers'], $idx, 1);
@@ -277,7 +295,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                 writeConfigAtomic($configFile, $config);
                 $config = require $configFile;
                 ensureProvidersList($config, $serverDir);
-                $msg = 'تنظیمات سرویس «' . ($opts['id'] ?? '') . '» ذخیره شد ✓';
+                $msg = 'تنظیمات پروایدر «' . ($opts['label'] ?? $opts['id']) . '» ذخیره شد ✓';
             } elseif ($action === 'test_api') {
                 $t0 = microtime(true);
                 $data = $inst->fetch();
@@ -293,7 +311,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                         $fields['coins.' . $k] = number_format((int)$v);
                     }
                 }
-                $msg = 'اتصال موفق (' . $lat . 'ms) — نرخ‌های دریافتی: ' . json_encode($fields, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                $msg = 'تست اتصال «' . ($opts['label'] ?? $opts['id']) . '» موفق بود (' . $lat . 'ms) — نرخ‌های دریافتی: ' . json_encode($fields, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
             } elseif ($action === 'test_api_raw') {
                 $rmBuild = new ReflectionMethod('ConfigurableHttpProvider', 'buildRequest');
                 $rmBuild->setAccessible(true);
@@ -303,39 +321,66 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                 $raw = $rmGet->invoke($inst, $url, $hdrs);
                 $masked = preg_replace('/(Bearer\s+|api_key=|api-key=)([A-Za-z0-9_\-]{6})[A-Za-z0-9_\-]+/i', '$1$2***', (string)$raw) ?? '';
                 $rawPreview = substr($masked, 0, 1200);
-                $msg = 'پاسخ خام سرور دریافت شد ✓';
+                $msg = 'پاسخ خام از «' . ($opts['label'] ?? $opts['id']) . '» دریافت شد ✓';
             }
         } elseif ($action === 'add_custom_provider') {
             $activeTab = 'providers';
+            $customName = trim((string)($_POST['custom_name'] ?? ''));
+            if ($customName === '') {
+                throw new RuntimeException('لطفاً یک نام برای پروایدر وارد کنید');
+            }
+            $slug = 'custom-' . (count($config['providers']) + 1);
             $newBlock = [
                 'class' => 'ConfigurableHttpProvider',
                 'options' => [
-                    'id' => 'custom-' . count($config['providers']),
+                    'id' => $slug,
+                    'label' => $customName,
                     'enabled' => true,
-                    'url' => 'https://api.ezrate.me/v1/rates',
+                    'url' => 'https://backend.gheymat.online/api/prices',
                     'method' => 'GET',
-                    'query' => ['symbols' => 'g18,mesghal,emami,bahar,nim,rob,gerami'],
+                    'query' => [],
                     'headers' => [],
-                    'auth' => ['type' => 'header', 'name' => 'X-API-Key', 'key' => ''],
-                    'map' => ['gold18' => ['path' => 'data.symbol=g18.sell', 'unit' => 'toman']],
-                    'max_age_seconds' => 600,
-                    'min_interval_seconds' => 300,
-                    'daily_cap' => 300,
+                    'auth' => ['type' => 'header', 'name' => 'Authorization', 'key' => ''],
+                    'map' => [
+                        'gold18' => ['path' => 'data.symbol=GOLD18-IRT.buy_price', 'unit' => 'toman'],
+                    ],
+                    'max_age_seconds' => 1800,
+                    'min_interval_seconds' => 600,
+                    'daily_cap' => 250,
                 ],
             ];
-            $newBlock['options'] = applySmartKeyOrCurl($newBlock['options'], (string)($_POST['custom_curl'] ?? ''));
-            array_unshift($config['providers'], $newBlock);
+            $curlOrUrl = trim((string)($_POST['custom_curl'] ?? ''));
+            if ($curlOrUrl !== '') {
+                $newBlock['options'] = applySmartKeyOrCurl($newBlock['options'], $curlOrUrl);
+            } else {
+                $newBlock['options']['enabled'] = false; // تا وقتی آدرسش را وارد کند خاموش بماند
+            }
+            // درج قبل از ManualProvider
+            $newList = [];
+            $inserted = false;
+            foreach ($config['providers'] as $p) {
+                if (!$inserted && ($p['class'] ?? '') === 'ManualProvider') {
+                    $newList[] = $newBlock;
+                    $inserted = true;
+                }
+                $newList[] = $p;
+            }
+            if (!$inserted) {
+                $newList[] = $newBlock;
+            }
+            $config['providers'] = $newList;
             writeConfigAtomic($configFile, $config);
             $config = require $configFile;
-            $msg = 'سرویس جدید اضافه شد ✓';
+            $msg = 'پروایدر سفارشی «' . $customName . '» اضافه شد ✓';
         } elseif ($action === 'delete_provider') {
             $activeTab = 'providers';
             $idx = (int)($_POST['provider_index'] ?? -1);
             if (isset($config['providers'][$idx]) && ($config['providers'][$idx]['class'] ?? '') !== 'ManualProvider') {
+                $delName = $config['providers'][$idx]['options']['label'] ?? ($config['providers'][$idx]['options']['id'] ?? '');
                 array_splice($config['providers'], $idx, 1);
                 writeConfigAtomic($configFile, $config);
                 $config = require $configFile;
-                $msg = 'سرویس حذف شد ✓';
+                $msg = 'پروایدر «' . $delName . '» حذف شد ✓';
             }
         }
     } catch (Throwable $e) {
@@ -357,10 +402,37 @@ if ($current === null && is_array($lastGood)) {
 }
 $esc = static fn ($v) => htmlspecialchars((string)($v ?? ''), ENT_QUOTES, 'UTF-8');
 
-$providerTitles = [
-    'markaznerkh' => ['name' => 'مرکزنرخ (MarkazNerkh.ir)', 'desc' => 'پیش‌فرض اول — طلای ۱۸ عیار و سکه امامی'],
-    'ezrate' => ['name' => 'ایزی‌ریت (EZRate.me)', 'desc' => 'همه نرخ‌ها: طلا ۱۸، مظنه و هر ۵ نوع سکه'],
+$presetMeta = [
+    'markaznerkh' => [
+        'name' => 'مرکزنرخ (MarkazNerkh.ir)',
+        'plan' => 'پیش‌فرض اول • طلای ۱۸ عیار و سکه امامی',
+        'needs_key' => true,
+    ],
+    'nerkh' => [
+        'name' => 'نرخ (nerkh.io)',
+        'plan' => 'سهمیه ۴۵۰/ماه • استراتژی خودکار: فقط ساعت ۹ تا ۱۸، هر ۸۰ دقیقه (حداکثر ۱۲/روز)',
+        'needs_key' => true,
+    ],
+    'ezrate' => [
+        'name' => 'ایزی‌ریت (EZRate.me)',
+        'plan' => 'سهمیه ۵۰/روز و ۱۵۰۰/ماه • استراتژی خودکار: هر ۳۵ دقیقه (حداکثر ۲۵/روز)',
+        'needs_key' => true,
+    ],
+    'gheymat' => [
+        'name' => 'قیمت آنلاین (gheymat.online)',
+        'plan' => 'رایگان بدون نیاز به کلید (۲۵۰/روز) • کامل: طلا ۱۸، مظنه و ۵ سکه',
+        'needs_key' => false,
+    ],
+    'pricetoday' => [
+        'name' => 'پرایس‌تودی (priceto.day)',
+        'plan' => 'رایگان و بدون محدودیت رسمی (بدون نیاز به کلید) • پشتیبان ساعات کم‌ترافیک',
+        'needs_key' => false,
+    ],
 ];
+
+$activeSourceDisplay = $lastGood['source_label'] ?? ($lastGood['source'] ?? 'ثبت نشده');
+$todayKey = date('Ymd');
+$monthKey = date('Ym');
 ?><!doctype html>
 <html lang="fa" dir="rtl">
 <head>
@@ -412,20 +484,32 @@ $providerTitles = [
     margin: 0;
     padding: 16px 14px 48px;
   }
-  .wrap { max-width: 480px; margin: 0 auto; }
+  .wrap { max-width: 490px; margin: 0 auto; }
 
   .top-bar {
     display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 14px;
+    margin-bottom: 12px;
   }
   .brand { display: flex; align-items: center; gap: 10px; }
   .brand-icon {
-    width: 36px; height: 36px; border-radius: 11px;
+    width: 38px; height: 38px; border-radius: 12px;
     background: linear-gradient(135deg, var(--gold), var(--gold-strong));
     color: #241300; display: inline-flex; align-items: center; justify-content: center;
   }
   .brand h1 { font-size: 16px; margin: 0; font-weight: 800; }
   .brand span { font-size: 11.5px; color: var(--muted); }
+
+  /* بنر منبع فعلی */
+  .source-banner {
+    background: var(--surface-2);
+    border: 1px solid rgba(232, 201, 125, 0.25);
+    border-radius: 14px;
+    padding: 10px 14px;
+    margin-bottom: 14px;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    font-size: 12px;
+  }
+  .source-banner strong { color: var(--gold); font-weight: 800; }
 
   .tabs {
     display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
@@ -453,14 +537,14 @@ $providerTitles = [
     margin-bottom: 12px;
   }
   .card-head {
-    display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 10px;
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 8px; margin-bottom: 10px;
   }
   .card-title { font-size: 14px; font-weight: 800; color: var(--gold); }
-  .card-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .card-sub { font-size: 11px; color: var(--muted); margin-top: 3px; line-height: 1.6; }
 
   .badge {
-    font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 99px;
+    font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 99px; white-space: nowrap;
   }
   .badge.on { background: rgba(52,211,153,.16); color: var(--ok); }
   .badge.off { background: rgba(255,255,255,.07); color: var(--muted); }
@@ -469,7 +553,7 @@ $providerTitles = [
   input, textarea {
     width: 100%; background: var(--surface-2);
     border: 1px solid var(--border); border-radius: 11px;
-    color: #fff; font-family: inherit; font-size: 15px; font-weight: 600;
+    color: #fff; font-family: inherit; font-size: 14.5px; font-weight: 600;
     padding: 10px 12px; outline: none; text-align: center;
   }
   input[dir="ltr"], textarea[dir="ltr"] {
@@ -479,9 +563,9 @@ $providerTitles = [
 
   .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .btn {
-    width: 100%; min-height: 44px; border: none; border-radius: 12px;
+    width: 100%; min-height: 42px; border: none; border-radius: 11px;
     background: linear-gradient(135deg, var(--gold), var(--gold-strong));
-    color: #241300; font-family: inherit; font-size: 13.5px; font-weight: 800;
+    color: #241300; font-family: inherit; font-size: 13px; font-weight: 800;
     cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   }
   .btn.ghost {
@@ -493,8 +577,8 @@ $providerTitles = [
 
   .switch-row {
     display: flex; align-items: center; justify-content: space-between;
-    background: var(--surface-2); padding: 9px 12px; border-radius: 11px;
-    margin-bottom: 10px; font-size: 12.5px;
+    background: var(--surface-2); padding: 8px 12px; border-radius: 11px;
+    margin-bottom: 10px; font-size: 12px;
   }
   .chk { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; font-weight: 700; margin: 0; }
   .chk input { width: 17px; height: 17px; accent-color: var(--gold-strong); margin: 0; }
@@ -505,6 +589,16 @@ $providerTitles = [
   .msg.ok { background: rgba(52,211,153,.15); color: var(--ok); border: 1px solid rgba(52,211,153,.3); }
   .msg.err { background: rgba(244,121,107,.15); color: var(--err); border: 1px solid rgba(244,121,107,.3); }
 
+  .strategy-note {
+    background: rgba(52, 211, 153, 0.08);
+    border: 1px solid rgba(52, 211, 153, 0.22);
+    border-radius: 12px;
+    padding: 10px 12px;
+    font-size: 11.5px;
+    color: #D1FAE5;
+    margin-bottom: 12px;
+    line-height: 1.7;
+  }
   details.adv { margin-top: 8px; font-size: 11.5px; color: var(--muted); }
   details.adv summary { cursor: pointer; color: var(--muted); padding: 4px 0; user-select: none; }
   .raw-box {
@@ -518,7 +612,7 @@ $providerTitles = [
 <body>
 <div class="wrap">
 
-  <!-- هدر ساده -->
+  <!-- هدر -->
   <div class="top-bar">
     <div class="brand">
       <span class="brand-icon">
@@ -534,9 +628,18 @@ $providerTitles = [
       <input type="hidden" name="action" value="run_pipeline" />
       <button type="submit" class="btn ghost sm">
         <svg class="ic" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M21 21v-5h-5"/></svg>
-        دریافت فوری نرخ
+        بروزرسانی و دریافت نرخ
       </button>
     </form>
+  </div>
+
+  <!-- نمایش واضح پروایدری که آخرین نرخ از آن دریافت شده -->
+  <div class="source-banner">
+    <div>
+      <span>دریافت‌شده از پروایدر: </span>
+      <strong><?= $esc($activeSourceDisplay) ?></strong>
+    </div>
+    <a href="public/prices.json?t=<?= time() ?>" target="_blank" style="color:var(--gold);text-decoration:none;font-weight:700">خروجی JSON ↗</a>
   </div>
 
   <?php if ($msg !== ''): ?>
@@ -555,7 +658,7 @@ $providerTitles = [
     </button>
     <button type="button" class="tab-btn <?= $activeTab === 'providers' ? 'active' : '' ?>" onclick="switchTab('providers')">
       <svg class="ic" viewBox="0 0 24 24"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><path d="M12 20h.01"/></svg>
-      سرویس‌های API
+      پروایدرها (چرخش هوشمند)
     </button>
   </div>
 
@@ -584,8 +687,12 @@ $providerTitles = [
     </form>
   </div>
 
-  <!-- تب ۲: سرویس‌های API (ساده و خلوت) -->
+  <!-- تب ۲: پروایدرها -->
   <div id="panel-providers" class="tab-panel <?= $activeTab === 'providers' ? 'active' : '' ?>">
+
+    <div class="strategy-note">
+      ✓ <strong>استراتژی خودکار فعال است:</strong> از ساعت ۲۳:۰۰ تا ۰۶:۰۰ صبح هیچ درخواستی ارسال نمی‌شود. در طول روز بین پروایدرهای روشن به‌صورت نوبتی (Round-Robin) می‌چرخد و اگر یکی خطا داد یا سهمیه‌اش پر شد، خودکار سراغ بعدی می‌رود.
+    </div>
 
     <?php foreach (($config['providers'] ?? []) as $idx => $provSpec):
         if (($provSpec['class'] ?? '') !== 'ConfigurableHttpProvider') {
@@ -596,7 +703,13 @@ $providerTitles = [
         $enabled = !empty($opts['enabled']);
         $authKey = (string)($opts['auth']['key'] ?? '');
         $masked = maskKey($authKey);
-        $meta = $providerTitles[$pid] ?? ['name' => 'سرویس ' . $pid, 'desc' => (string)($opts['url'] ?? '')];
+        $meta = $presetMeta[$pid] ?? [
+            'name' => (string)($opts['label'] ?? $pid),
+            'plan' => 'پروایدر سفارشی',
+            'needs_key' => true,
+        ];
+        $callsToday = (int)($providerState[$pid]['daily'][$todayKey] ?? 0);
+        $callsMonth = (int)($providerState[$pid]['monthly'][$monthKey] ?? 0);
     ?>
       <div class="card">
         <form method="post">
@@ -605,51 +718,50 @@ $providerTitles = [
 
           <div class="card-head">
             <div>
-              <div class="card-title"><?= $idx === 0 ? '⭐ ' : '' ?><?= $esc($meta['name']) ?></div>
-              <div class="card-sub"><?= $esc($meta['desc']) ?></div>
+              <div class="card-title"><?= $esc($meta['name']) ?></div>
+              <div class="card-sub"><?= $esc($meta['plan']) ?></div>
             </div>
-            <span class="badge <?= $enabled ? 'on' : 'off' ?>"><?= $enabled ? 'فعال' : 'خاموش' ?></span>
+            <span class="badge <?= $enabled ? 'on' : 'off' ?>"><?= $enabled ? 'روشن' : 'خاموش' ?></span>
           </div>
 
           <div class="switch-row">
             <label class="chk">
               <input type="checkbox" name="api_enabled" <?= $enabled ? 'checked' : '' ?> />
-              <span>این سرویس روشن باشد</span>
+              <span>فعال در چرخش</span>
             </label>
-            <?php if ($idx > 0): ?>
-              <label class="chk" style="color:var(--gold)">
-                <input type="checkbox" name="make_primary" value="1" />
-                <span>انتخاب به‌عنوان منبع اول</span>
-              </label>
-            <?php else: ?>
-              <span style="font-size:11px;color:var(--gold)">اولویت اول</span>
-            <?php endif; ?>
+            <span style="color:var(--muted)">مصرف امروز: <?= $callsToday ?> | ماه: <?= $callsMonth ?></span>
           </div>
 
-          <label>
-            کلید API یا دستور curl
-            <span style="font-weight:400;color:var(--muted)">(فعلی: <?= $esc($masked ?: 'ثبت نشده') ?>)</span>
-          </label>
-          <input name="api_auth_key" dir="ltr" placeholder="کلید جدید یا دستور curl را اینجا Paste کن (خالی = بدون تغییر)" />
+          <?php if ($meta['needs_key']): ?>
+            <label>
+              کلید API یا دستور curl
+              <span style="font-weight:400;color:var(--muted)">(فعلی: <?= $esc($masked ?: 'ثبت نشده') ?>)</span>
+            </label>
+            <input name="api_auth_key" dir="ltr" placeholder="کلید API یا دستور curl را وارد کن (خالی = بدون تغییر)" />
+          <?php else: ?>
+            <input type="hidden" name="api_auth_key" value="" />
+          <?php endif; ?>
 
           <div class="row" style="margin-top:10px">
             <button type="submit" name="action" value="save_api" class="btn">ذخیره</button>
-            <button type="submit" name="action" value="test_api" class="btn ghost">تست اتصال</button>
+            <button type="submit" name="action" value="test_api" class="btn ghost">تست دریافت</button>
           </div>
 
           <details class="adv">
-            <summary>تنظیمات فنی (آدرس، پارامترها و پاسخ خام)</summary>
+            <summary>تنظیمات فنی پروایدر</summary>
             <div style="margin-top:8px">
+              <label>نام نمایشی پروایدر</label>
+              <input name="api_label" value="<?= $esc($opts['label'] ?? $meta['name']) ?>" style="margin-bottom:6px" />
               <label>آدرس API</label>
               <input name="api_url" dir="ltr" value="<?= $esc($opts['url'] ?? '') ?>" />
               <label style="margin-top:6px">پارامترهای Query</label>
               <input name="api_query" dir="ltr" value="<?= $esc(http_build_query(is_array($opts['query'] ?? null) ? $opts['query'] : [])) ?>" />
               <label style="margin-top:6px">نگاشت فیلدها (Map JSON)</label>
-              <textarea name="api_map" dir="ltr" style="min-height:60px"><?= $esc(json_encode($opts['map'] ?? new stdClass(), JSON_UNESCAPED_SLASHES)) ?></textarea>
+              <textarea name="api_map" dir="ltr" style="min-height:54px"><?= $esc(json_encode($opts['map'] ?? new stdClass(), JSON_UNESCAPED_SLASHES)) ?></textarea>
               <div style="display:flex;gap:8px;margin-top:8px">
                 <button type="submit" name="action" value="test_api_raw" class="btn ghost sm">نمایش پاسخ خام (RAW)</button>
-                <?php if (!isset($providerTitles[$pid])): ?>
-                  <button type="submit" name="action" value="delete_provider" class="btn ghost sm" style="color:var(--err);border-color:var(--err)">حذف این سرویس</button>
+                <?php if (!isset($presetMeta[$pid])): ?>
+                  <button type="submit" name="action" value="delete_provider" class="btn ghost sm" style="color:var(--err);border-color:var(--err)">حذف این پروایدر</button>
                 <?php endif; ?>
               </div>
             </div>
@@ -658,16 +770,19 @@ $providerTitles = [
       </div>
     <?php endforeach; ?>
 
-    <!-- افزودن سرویس دیگر فقط در صورت نیاز -->
-    <details class="card" style="padding:12px 15px">
-      <summary style="cursor:pointer;font-size:13px;font-weight:700;color:var(--gold)">+ افزودن سرویس API دیگر با دستور curl</summary>
-      <form method="post" style="margin-top:10px">
+    <!-- افزودن کاستوم پروایدر فقط با تعریف اسم -->
+    <div class="card">
+      <div class="card-title" style="margin-bottom:8px">+ افزودن کاستوم پروایدر</div>
+      <form method="post">
         <input type="hidden" name="token" value="<?= $esc($given) ?>" />
         <input type="hidden" name="action" value="add_custom_provider" />
-        <input name="custom_curl" dir="ltr" placeholder='curl "https://..." -H "Authorization: ..."' required />
-        <button type="submit" class="btn ghost" style="margin-top:8px">افزودن سرویس</button>
+        <label>نام پروایدر جدید *</label>
+        <input name="custom_name" placeholder="مثلاً: صرافی من / نوسان" required style="margin-bottom:8px" />
+        <label>دستور curl یا آدرس API <span style="font-weight:400;color:var(--muted)">(اختیاری — بعداً هم می‌توانی وارد کنی)</span></label>
+        <input name="custom_curl" dir="ltr" placeholder='curl "https://..."' />
+        <button type="submit" class="btn ghost" style="margin-top:10px">ایجاد پروایدر</button>
       </form>
-    </details>
+    </div>
 
   </div>
 
