@@ -262,12 +262,28 @@ class ConfigurableHttpProvider extends BaseProvider implements ProviderInterface
         return $res;
     }
 
-    /** مسیر نقطه‌ای: کلید انجمنی یا ایندکس عددی آرایه */
+    /** مسیر نقطه‌ای: کلید انجمنی، ایندکس عددی آرایه، یا جستجو در لیست اشیاء (مثل data.symbol=g18.sell) */
     protected function getPath(array $payload, string $path)
     {
         $cur = $payload;
         foreach (explode('.', $path) as $seg) {
-            if (is_array($cur) && array_key_exists($seg, $cur)) {
+            if (!is_array($cur)) {
+                return null;
+            }
+            if (strpos($seg, '=') !== false) {
+                [$matchKey, $matchVal] = explode('=', $seg, 2);
+                $foundItem = null;
+                foreach ($cur as $item) {
+                    if (is_array($item) && isset($item[$matchKey]) && strcasecmp((string)$item[$matchKey], $matchVal) === 0) {
+                        $foundItem = $item;
+                        break;
+                    }
+                }
+                if ($foundItem === null) {
+                    return null;
+                }
+                $cur = $foundItem;
+            } elseif (array_key_exists($seg, $cur)) {
                 $cur = $cur[$seg];
             } else {
                 return null;

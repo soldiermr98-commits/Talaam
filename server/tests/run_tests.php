@@ -612,18 +612,42 @@ t('ProviderFactory: کلاس ناشناخته → پیام واضح', function (
 });
 
 // ─── جمعبندی ───
-t('DefaultConfig: ساختار کامل + ساخت منابع پیشفرض (markaznerkh)', function () {
+t('DefaultConfig: ساختار کامل + ساخت منابع پیشفرض (markaznerkh + ezrate)', function () {
     $dir = tmpDir();
     $cfg = DefaultConfig::get($dir);
     assertTrue2(isset($cfg['providers'][0]['options']['url']), 'provider url exists');
-    assertTrue2(strpos($cfg['providers'][0]['options']['url'], 'markaznerkh') !== false, 'default provider = markaznerkh');
-    assertTrue2(isset($cfg['providers'][1]) && ($cfg['providers'][1]['class'] ?? '') === 'ManualProvider', 'manual fallback last');
+    assertTrue2(strpos($cfg['providers'][0]['options']['url'], 'markaznerkh') !== false, 'default provider 1 = markaznerkh');
+    assertTrue2(strpos($cfg['providers'][1]['options']['url'], 'ezrate.me') !== false, 'default provider 2 = ezrate');
+    assertTrue2(isset($cfg['providers'][2]) && ($cfg['providers'][2]['class'] ?? '') === 'ManualProvider', 'manual fallback last');
     assertTrue2($cfg['admin_token'] !== '', 'admin token preset');
     $providers = ProviderFactory::createAll($cfg);
-    assertSame2(2, count($providers));
+    assertSame2(3, count($providers));
     assertTrue2($providers[0] instanceof ConfigurableHttpProvider);
-    assertTrue2($providers[1] instanceof ManualProvider);
+    assertTrue2($providers[1] instanceof ConfigurableHttpProvider);
+    assertTrue2($providers[2] instanceof ManualProvider);
     deleteDir($dir);
+});
+
+t('array object lookup mapping (ezrate style: data.symbol=g18.sell)', function () {
+    StubHttpProvider::$fixture = [
+        'data' => [
+            ['symbol' => 'usd', 'sell' => 259350],
+            ['symbol' => 'g18', 'sell' => 8120000],
+            ['symbol' => 'emami', 'sell' => 89000000],
+        ],
+    ];
+    $p = new StubHttpProvider([
+        'id' => 'ezrate',
+        'url' => 'https://api.ezrate.me/v1/rates',
+        'map' => [
+            'gold18' => ['path' => 'data.symbol=g18.sell', 'unit' => 'toman'],
+            'coins.emami' => ['path' => 'data.symbol=emami.sell', 'unit' => 'toman'],
+        ],
+    ]);
+    $d = $p->fetch();
+    assertSame2(8120000, $d['gold18']);
+    assertSame2(89000000, $d['coins']['emami']);
+    deleteDir(tmpDir());
 });
 
 echo "\n== RESULT: {$GLOBALS['t']['pass']} passed, {$GLOBALS['t']['fail']} failed ==\n";
